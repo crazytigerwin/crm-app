@@ -20,7 +20,7 @@
         }
 
         .header {
-            background: #0070d2;
+            background: #2d7a7a;
             color: white;
             padding: 20px 30px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -62,12 +62,14 @@
         }
 
         .tab-btn:hover {
-            color: #0070d2;
+            background: #e07856;
+            color: white;
         }
 
         .tab-btn.active {
-            color: #0070d2;
-            border-bottom-color: #0070d2;
+            color: white;
+            background: #2d7a7a;
+            border-bottom: none;
         }
 
         .tab-content {
@@ -90,7 +92,7 @@
             border-radius: 8px;
             padding: 20px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-            border-left: 4px solid #0070d2;
+            border-left: 4px solid #2d7a7a;
         }
 
         .metric-label {
@@ -105,7 +107,7 @@
         .metric-value {
             font-size: 32px;
             font-weight: bold;
-            color: #0070d2;
+            color: #2d7a7a;
         }
 
         .metric-subtext {
@@ -168,8 +170,8 @@
 
         input:focus, select:focus, textarea:focus {
             outline: none;
-            border-color: #0070d2;
-            box-shadow: 0 0 0 3px rgba(0, 112, 210, 0.1);
+            border-color: #2d7a7a;
+            box-shadow: 0 0 0 3px rgba(45, 122, 122, 0.1);
         }
 
         textarea {
@@ -178,7 +180,7 @@
         }
 
         button {
-            background: #0070d2;
+            background: #e07856;
             color: white;
             padding: 10px 20px;
             border: none;
@@ -190,7 +192,7 @@
         }
 
         button:hover {
-            background: #005fb8;
+            background: #c85e3f;
         }
 
         button.secondary {
@@ -243,7 +245,7 @@
         }
 
         .opp-link {
-            color: #0070d2;
+            color: #2d7a7a;
             cursor: pointer;
             text-decoration: none;
             font-weight: 600;
@@ -354,7 +356,7 @@
             padding: 12px;
             background: white;
             border-radius: 4px;
-            border-left: 3px solid #0070d2;
+            border-left: 3px solid #2d7a7a;
         }
 
         .detail-label {
@@ -379,7 +381,7 @@
             padding: 12px;
             border-radius: 4px;
             margin-bottom: 10px;
-            border-left: 3px solid #0070d2;
+            border-left: 3px solid #2d7a7a;
         }
 
         .activity-header {
@@ -392,7 +394,7 @@
         .activity-type {
             display: inline-block;
             padding: 3px 8px;
-            background: #0070d2;
+            background: #e07856;
             color: white;
             border-radius: 3px;
             font-size: 10px;
@@ -415,7 +417,7 @@
             padding: 15px;
             border-radius: 4px;
             margin-bottom: 10px;
-            border-left: 3px solid #0070d2;
+            border-left: 3px solid #2d7a7a;
         }
 
         .contact-item h4 {
@@ -524,8 +526,13 @@
 </head>
 <body>
     <div class="header">
-        <h1>💼 Sales CRM</h1>
-        <p>Sales Pipeline & Opportunity Management</p>
+        <div style="display: flex; align-items: center; gap: 20px;">
+            <img src="./assets/logo.png" alt="Midwest Natural Fiber" style="height: 150px; width: auto; background: white; padding: 8px; border-radius: 8px;">
+            <div>
+                <h1>Midwest Natural Fiber CRM</h1>
+                <p>Sales Pipeline & Opportunity Management</p>
+            </div>
+        </div>
     </div>
 
     <div class="container">
@@ -892,7 +899,7 @@
     </div>
 
     <script>
-        const API_URL = 'http://127.0.0.1:5000/api';
+    const API_URL = 'http://127.0.0.1:3000/api';        
         let allOpportunities = [];
         let allContacts = [];
         let selectedOppId = null;
@@ -933,7 +940,11 @@
         function formatCurrency(val) {
             return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(val);
         }
-
+function getProbabilityColor(prob) {
+    if (prob <= 33) return 'prob-0-33';
+    if (prob <= 66) return 'prob-34-66';
+    return 'prob-67-100';
+}
         function formatPhoneNumber(value) {
             // Remove all non-digits
             const cleaned = value.replace(/\D/g, '');
@@ -952,12 +963,6 @@
             inputElement.value = formatPhoneNumber(inputElement.value);
         }
 
-        function getProbabilityColor(prob) {
-            if (prob <= 33) return 'prob-0-33';
-            if (prob <= 66) return 'prob-34-66';
-            return 'prob-67-100';
-        }
- 
         // ===== CONTACTS =====
         async function loadContacts() {
             try {
@@ -1476,7 +1481,7 @@
                     labels: ['Forecast', 'Closed'],
                     datasets: [{
                         data: [open, closed],
-                        backgroundColor: ['#0070d2', '#1b6e0b']
+                        backgroundColor: ['#2d7a7a', '#1b6e0b']
                     }]
                 },
                 options: {
