@@ -345,6 +345,11 @@ def static_files(path):
 def serve_html():
     with open('index.html', 'r') as f:
         return f.read()
+from flask import Flask, jsonify, request, send_from_directory
+
+@app.route('/')
+def serve_index():
+    return send_from_directory('.', 'index.html')
 
 if __name__ == '__main__':
-    app.run(debug=False, port=5000, host='0.0.0.0')
+    app.run(debug=False, port=3000, host='0.0.0.0')
