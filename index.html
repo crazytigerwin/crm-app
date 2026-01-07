@@ -1,0 +1,1600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales CRM</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f4f6f9;
+            color: #333;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: #0070d2;
+            color: white;
+            padding: 20px 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            font-size: 13px;
+            opacity: 0.9;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 30px 20px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 25px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .tab-btn {
+            padding: 12px 20px;
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            font-weight: 600;
+            color: #666;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+
+        .tab-btn:hover {
+            color: #0070d2;
+        }
+
+        .tab-btn.active {
+            color: #0070d2;
+            border-bottom-color: #0070d2;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .metric-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            border-left: 4px solid #0070d2;
+        }
+
+        .metric-label {
+            color: #666;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .metric-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #0070d2;
+        }
+
+        .metric-subtext {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+        }
+
+        .section {
+            background: white;
+            border-radius: 8px;
+            padding: 25px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            margin-bottom: 20px;
+        }
+
+        .section h2 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #f0f0f0;
+            padding-bottom: 15px;
+        }
+
+        .section h3 {
+            font-size: 14px;
+            font-weight: 600;
+            margin: 20px 0 15px 0;
+            color: #333;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        input, select, textarea {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #0070d2;
+            box-shadow: 0 0 0 3px rgba(0, 112, 210, 0.1);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        button {
+            background: #0070d2;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #005fb8;
+        }
+
+        button.secondary {
+            background: #f3f3f3;
+            color: #333;
+        }
+
+        button.secondary:hover {
+            background: #e8e8e8;
+        }
+
+        button.close-btn {
+            background: #666;
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+
+        button.close-btn:hover {
+            background: #555;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead {
+            background: #f8f9fa;
+        }
+
+        th {
+            text-align: left;
+            padding: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #666;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 13px;
+        }
+
+        tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        .opp-link {
+            color: #0070d2;
+            cursor: pointer;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .opp-link:hover {
+            text-decoration: underline;
+        }
+
+        .stage-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            background: #f0f0f0;
+            color: #333;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .prob-0-33 {
+            background: #fdd9d6 !important;
+            color: #a71a1a !important;
+        }
+
+        .prob-34-66 {
+            background: #fff8e1 !important;
+            color: #856404 !important;
+        }
+
+        .prob-67-100 {
+            background: #d4edda !important;
+            color: #155724 !important;
+        }
+
+        .error {
+            background: #fae7e7;
+            color: #b81c1c;
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 12px;
+        }
+
+        .success {
+            background: #e7f5e7;
+            color: #1b6e0b;
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 12px;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #999;
+            padding: 40px 20px;
+            font-size: 13px;
+        }
+
+        .loading {
+            text-align: center;
+            color: #999;
+            padding: 20px;
+            font-style: italic;
+        }
+
+        .funnel {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin: 30px 0;
+        }
+
+        .funnel-stage {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px;
+            border-radius: 4px;
+            color: white;
+            font-weight: 600;
+        }
+
+        .funnel-qual { background: linear-gradient(90deg, #d4edda, #90ee90); color: #155724; }
+        .funnel-needs { background: linear-gradient(90deg, #a8d8a8, #56d856); color: white; }
+        .funnel-proposal { background: linear-gradient(90deg, #6bc856, #3ba633); color: white; }
+        .funnel-neg { background: linear-gradient(90deg, #2d8a2d, #1a5a1a); color: white; }
+
+        .opportunity-detail {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+
+        .opportunity-detail h3 {
+            margin-top: 0;
+        }
+
+        .detail-row {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .detail-item {
+            padding: 12px;
+            background: white;
+            border-radius: 4px;
+            border-left: 3px solid #0070d2;
+        }
+
+        .detail-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .detail-value {
+            font-size: 14px;
+            color: #333;
+        }
+
+        .activity-log {
+            margin-top: 20px;
+        }
+
+        .activity-item {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            border-left: 3px solid #0070d2;
+        }
+
+        .activity-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .activity-type {
+            display: inline-block;
+            padding: 3px 8px;
+            background: #0070d2;
+            color: white;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+
+        .activity-date {
+            font-size: 11px;
+            color: #999;
+        }
+
+        .activity-desc {
+            font-size: 12px;
+            color: #333;
+            line-height: 1.4;
+        }
+
+        .contact-item {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            border-left: 3px solid #0070d2;
+        }
+
+        .contact-item h4 {
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .contact-item p {
+            font-size: 12px;
+            color: #666;
+            margin: 3px 0;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            overflow: auto;
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 15px;
+        }
+
+        .modal-header h2 {
+            font-size: 20px;
+            color: #333;
+            margin: 0;
+        }
+
+        .close {
+            font-size: 28px;
+            font-weight: bold;
+            color: #999;
+            cursor: pointer;
+        }
+
+        .close:hover {
+            color: #333;
+        }
+
+        .add-phone-btn {
+            background: #f3f3f3;
+            color: #333;
+            padding: 8px 12px;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+
+        .phone-item {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .phone-item input {
+            flex: 1;
+        }
+
+        .phone-item button {
+            padding: 8px 12px;
+            background: #e74c3c;
+        }
+
+        .phone-item button:hover {
+            background: #c0392b;
+        }
+
+        @media (max-width: 768px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .detail-row {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>💼 Sales CRM</h1>
+        <p>Sales Pipeline & Opportunity Management</p>
+    </div>
+
+    <div class="container">
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+            <button class="tab-btn" data-tab="opportunities">Opportunities</button>
+            <button class="tab-btn" data-tab="pipeline">Pipeline</button>
+            <button class="tab-btn" data-tab="activities">Activities</button>
+            <button class="tab-btn" data-tab="contacts">Contacts</button>
+        </div>
+
+        <!-- DASHBOARD TAB -->
+        <div id="dashboard" class="tab-content active">
+            <div class="dashboard-grid">
+                <div class="metric-card">
+                    <div class="metric-label">Closed This Quarter</div>
+                    <div class="metric-value" id="closedThisQuarter">$0</div>
+                    <div class="metric-subtext">Realized Revenue</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">My Pipeline</div>
+                    <div class="metric-value" id="myPipeline">$0</div>
+                    <div class="metric-subtext">Total Open Opportunities</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">My Forecast</div>
+                    <div class="metric-value" id="myForecast">$0</div>
+                    <div class="metric-subtext">Weighted Forecast</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Total Revenue</div>
+                    <div class="metric-value" id="totalRevenue">$0</div>
+                    <div class="metric-subtext">Closed Business All Time</div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>My Top 10 Opportunities</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Opportunity Name</th>
+                            <th>Stage</th>
+                            <th>Amount</th>
+                            <th>Probability</th>
+                        </tr>
+                    </thead>
+                    <tbody id="topOppsBody">
+                        <tr><td colspan="4" class="loading">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                <div class="section">
+                    <h2>Pipeline by Stage</h2>
+                    <div style="position: relative; height: 250px;">
+                        <canvas id="pipelineChart"></canvas>
+                    </div>
+                </div>
+                <div class="section">
+                    <h2>Forecast Summary</h2>
+                    <div style="position: relative; height: 250px;">
+                        <canvas id="forecastChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- OPPORTUNITIES TAB -->
+        <div id="opportunities" class="tab-content">
+            <div class="section">
+                <h2>Add New Opportunity</h2>
+                <div id="oppError" class="error" style="display: none;"></div>
+                <div id="oppSuccess" class="success" style="display: none;"></div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Contact *</label>
+                        <div style="display: flex; gap: 10px;">
+                            <select id="oppContact" required style="flex: 1;">
+                                <option value="">Select a contact...</option>
+                            </select>
+                            <button onclick="openAddContactModal()" style="padding: 8px 12px; width: auto;">+ Add New</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Opportunity Name *</label>
+                        <input type="text" id="oppName" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Amount ($) *</label>
+                        <input type="number" id="oppAmount" required step="0.01" min="0">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Stage *</label>
+                        <select id="oppStage" required>
+                            <option value="">Select stage...</option>
+                            <option value="qualification">Qualification</option>
+                            <option value="needs_analysis">Needs Analysis</option>
+                            <option value="proposal">Proposal/Quote</option>
+                            <option value="negotiation">Negotiation</option>
+                            <option value="closed_won">Closed Won</option>
+                            <option value="closed_lost">Closed Lost</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Probability (%)</label>
+                        <input type="number" id="oppProbability" min="0" max="100" value="50">
+                    </div>
+                    <div class="form-group">
+                        <label>Lead Source</label>
+                        <select id="oppLeadSource">
+                            <option value="">Select...</option>
+                            <option value="web">Web</option>
+                            <option value="referral">Referral</option>
+                            <option value="cold_call">Cold Call</option>
+                            <option value="inbound">Inbound</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="margin: 25px 0; padding: 20px; background: #f8f9fa; border-radius: 4px;">
+                    <h3>BANT Qualification</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Budget</label>
+                            <textarea id="oppBudget"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Authority</label>
+                            <textarea id="oppAuthority"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Need</label>
+                            <textarea id="oppNeed"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Timeline</label>
+                            <textarea id="oppTimeline"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <button onclick="addOpportunity()">Create Opportunity</button>
+            </div>
+
+            <div class="section" style="margin-top: 30px;">
+                <h2>All Opportunities</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Opportunity Name</th>
+                            <th>Contact</th>
+                            <th>Stage</th>
+                            <th>Amount</th>
+                            <th>Probability</th>
+                        </tr>
+                    </thead>
+                    <tbody id="allOppsBody">
+                        <tr><td colspan="5" class="loading">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- PIPELINE TAB -->
+        <div id="pipeline" class="tab-content">
+            <div class="section">
+                <h2>My Pipeline</h2>
+                <div class="funnel" id="funnelChart">
+                    <div class="loading">Loading pipeline...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ACTIVITIES TAB -->
+        <div id="activities" class="tab-content">
+            <div style="display: grid; grid-template-columns: 300px 1fr; gap: 20px;">
+                <div class="section">
+                    <h2>Opportunities</h2>
+                    <div id="activitiesOppList">
+                        <div class="loading">Loading...</div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>Activity Log</h2>
+                    <div id="noOppSelected" class="empty-state">Select an opportunity to log activities</div>
+
+                    <div id="activityPanel" style="display: none;">
+                        <div id="selectedOppInfo" style="background: #f8f9fa; padding: 12px; border-radius: 4px; margin-bottom: 15px;"></div>
+
+                        <h3>Log Activity</h3>
+                        <div id="activityError" class="error" style="display: none;"></div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Type *</label>
+                                <select id="activityType" required>
+                                    <option value="">Select type...</option>
+                                    <option value="call">Call</option>
+                                    <option value="email">Email</option>
+                                    <option value="meeting">Meeting</option>
+                                    <option value="note">Note</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Date *</label>
+                                <input type="date" id="activityDate" required>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Description</label>
+                            <textarea id="activityDesc" placeholder="Activity details..." style="min-height: 60px;"></textarea>
+                        </div>
+                        <button onclick="logActivity()" style="width: auto; margin-bottom: 20px;">Log Activity</button>
+
+                        <h3>History</h3>
+                        <div id="activityHistory">
+                            <div class="loading">Loading history...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CONTACTS TAB -->
+        <div id="contacts" class="tab-content">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="section">
+                    <h2>Add Contact</h2>
+                    <div id="contactError" class="error" style="display: none;"></div>
+                    <div id="contactSuccess" class="success" style="display: none;"></div>
+
+                    <div class="form-row" style="flex-direction: column;">
+                        <div class="form-group">
+                            <label>Name *</label>
+                            <input type="text" id="contactName" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Title</label>
+                            <input type="text" id="contactTitle">
+                        </div>
+                        <div class="form-group">
+                            <label>Company</label>
+                            <input type="text" id="contactCompany">
+                        </div>
+                        <div class="form-group">
+                            <label>Email</label>
+                            <input type="email" id="contactEmail">
+                        </div>
+                        <div class="form-group">
+                            <label>Phone Numbers</label>
+                            <div id="phoneNumbers">
+                                <input type="tel" class="phone-input" placeholder="Phone number" oninput="handlePhoneInput(this)">
+                            </div>
+                            <button onclick="addPhoneField()" class="add-phone-btn">+ Add Another Phone</button>
+                        </div>
+                        <div class="form-group">
+                            <label>Additional Info</label>
+                            <textarea id="contactAdditionalInfo" style="min-height: 80px;"></textarea>
+                        </div>
+                        <button onclick="addContact()">Add Contact</button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>Contacts</h2>
+                    <div id="contactsList">
+                        <div class="loading">Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="opportunityModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalOppName"></h2>
+                <span class="close" onclick="closeOppModal()">&times;</span>
+            </div>
+            <div id="modalOppContent"></div>
+        </div>
+    </div>
+
+    <div id="addContactModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Quick Add Contact</h2>
+                <span class="close" onclick="closeAddContactModal()">&times;</span>
+            </div>
+            <div id="quickContactError" class="error" style="display: none;"></div>
+            <div class="form-row" style="flex-direction: column;">
+                <div class="form-group">
+                    <label>Name *</label>
+                    <input type="text" id="quickContactName" required>
+                </div>
+                <div class="form-group">
+                    <label>Company</label>
+                    <input type="text" id="quickContactCompany">
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="quickContactEmail">
+                </div>
+                <div class="form-group">
+                    <label>Phone</label>
+                    <input type="tel" id="quickContactPhone" placeholder="Phone number" oninput="handlePhoneInput(this)">
+                </div>
+                <button onclick="addQuickContact()">Add Contact</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="editContactModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Edit Contact</h2>
+                <span class="close" onclick="closeEditContactModal()">&times;</span>
+            </div>
+            <div id="editContactError" class="error" style="display: none;"></div>
+            <div id="editContactSuccess" class="success" style="display: none;"></div>
+            <div class="form-row" style="flex-direction: column;">
+                <div class="form-group">
+                    <label>Name *</label>
+                    <input type="text" id="editContactName" required>
+                </div>
+                <div class="form-group">
+                    <label>Title</label>
+                    <input type="text" id="editContactTitle">
+                </div>
+                <div class="form-group">
+                    <label>Company</label>
+                    <input type="text" id="editContactCompany">
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="editContactEmail">
+                </div>
+                <div class="form-group">
+                    <label>Phone Numbers</label>
+                    <div id="editPhoneNumbers">
+                    </div>
+                    <button onclick="addEditPhoneField()" class="add-phone-btn">+ Add Another Phone</button>
+                </div>
+                <div class="form-group">
+                    <label>Additional Info</label>
+                    <textarea id="editContactAdditionalInfo" style="min-height: 80px;"></textarea>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="saveContactChanges()" style="flex: 1;">Save Changes</button>
+                    <button onclick="closeEditContactModal()" class="secondary" style="flex: 1;">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://127.0.0.1:5000/api';
+        let allOpportunities = [];
+        let allContacts = [];
+        let selectedOppId = null;
+        let pipelineChart = null;
+        let forecastChart = null;
+
+        // ===== TAB SWITCHING =====
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const tabName = e.target.dataset.tab;
+                
+                document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                
+                document.getElementById(tabName).classList.add('active');
+                e.target.classList.add('active');
+
+                if (tabName === 'pipeline') buildFunnelChart();
+                if (tabName === 'activities') loadActivityOpportunities();
+            });
+        });
+
+        // ===== UTILITY FUNCTIONS =====
+        function showError(id, msg) {
+            const el = document.getElementById(id);
+            el.textContent = msg;
+            el.style.display = 'block';
+            setTimeout(() => el.style.display = 'none', 5000);
+        }
+
+        function showSuccess(id, msg) {
+            const el = document.getElementById(id);
+            el.textContent = msg;
+            el.style.display = 'block';
+            setTimeout(() => el.style.display = 'none', 5000);
+        }
+
+        function formatCurrency(val) {
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(val);
+        }
+
+        function formatPhoneNumber(value) {
+            // Remove all non-digits
+            const cleaned = value.replace(/\D/g, '');
+            
+            // Format as (XXX)XXX-XXXX
+            if (cleaned.length <= 3) {
+                return cleaned;
+            } else if (cleaned.length <= 6) {
+                return `(${cleaned.slice(0, 3)})${cleaned.slice(3)}`;
+            } else {
+                return `(${cleaned.slice(0, 3)})${cleaned.slice(3, 6)}-${cleaned.slice(6, 10)}`;
+            }
+        }
+
+        function handlePhoneInput(inputElement) {
+            inputElement.value = formatPhoneNumber(inputElement.value);
+        }
+
+        function getProbabilityColor(prob) {
+            if (prob <= 33) return 'prob-0-33';
+            if (prob <= 66) return 'prob-34-66';
+            return 'prob-67-100';
+        }
+ 
+        // ===== CONTACTS =====
+        async function loadContacts() {
+            try {
+                const res = await fetch(`${API_URL}/contacts`);
+                allContacts = await res.json();
+                
+                const list = document.getElementById('contactsList');
+                if (!allContacts.length) {
+                    list.innerHTML = '<div class="empty-state">No contacts yet</div>';
+                    return;
+                }
+
+                list.innerHTML = allContacts.map(c => `
+                    <div class="contact-item" onclick="openEditContactModal(${c.id})" style="cursor: pointer;">
+                        <h4>${c.name}</h4>
+                        ${c.title ? `<p><strong>Title:</strong> ${c.title}</p>` : ''}
+                        ${c.company ? `<p><strong>Company:</strong> ${c.company}</p>` : ''}
+                        ${c.email ? `<p>📧 ${c.email}</p>` : ''}
+                        ${c.phone ? `<p>📱 ${c.phone}</p>` : ''}
+                        ${c.additional_info ? `<p><strong>Info:</strong> ${c.additional_info}</p>` : ''}
+                        <p style="margin-top: 10px; font-size: 11px; color: #0070d2;"><em>Click to edit</em></p>
+                    </div>
+                `).join('');
+
+                updateContactDropdowns();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function updateContactDropdowns() {
+            const dropdown = document.getElementById('oppContact');
+            const val = dropdown.value;
+            dropdown.innerHTML = '<option value="">Select...</option>' + allContacts.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+            dropdown.value = val;
+        }
+
+        function addPhoneField() {
+            const container = document.getElementById('phoneNumbers');
+            const input = document.createElement('input');
+            input.type = 'tel';
+            input.className = 'phone-input';
+            input.placeholder = 'Phone number';
+            input.setAttribute('oninput', 'handlePhoneInput(this)');
+            container.appendChild(input);
+        }
+
+        async function addContact() {
+            const phones = Array.from(document.querySelectorAll('.phone-input')).map(el => el.value).filter(v => v);
+            const data = {
+                name: document.getElementById('contactName').value,
+                email: document.getElementById('contactEmail').value,
+                phone: phones.join('; '),
+                company: document.getElementById('contactCompany').value,
+                title: document.getElementById('contactTitle').value,
+                additional_info: document.getElementById('contactAdditionalInfo').value
+            };
+
+            if (!data.name) {
+                showError('contactError', 'Name is required');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_URL}/contacts`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (res.ok) {
+                    showSuccess('contactSuccess', 'Contact added!');
+                    document.getElementById('contactName').value = '';
+                    document.getElementById('contactEmail').value = '';
+                    document.getElementById('contactTitle').value = '';
+                    document.getElementById('contactCompany').value = '';
+                    document.getElementById('contactAdditionalInfo').value = '';
+                    document.getElementById('phoneNumbers').innerHTML = '<input type="tel" class="phone-input" placeholder="Phone number">';
+                    loadContacts();
+                }
+            } catch (e) {
+                showError('contactError', e.message);
+            }
+        }
+
+        async function addQuickContact() {
+            const data = {
+                name: document.getElementById('quickContactName').value,
+                email: document.getElementById('quickContactEmail').value,
+                phone: document.getElementById('quickContactPhone').value,
+                company: document.getElementById('quickContactCompany').value
+            };
+
+            if (!data.name) {
+                showError('quickContactError', 'Name is required');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_URL}/contacts`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (res.ok) {
+                    closeAddContactModal();
+                    document.getElementById('quickContactName').value = '';
+                    document.getElementById('quickContactEmail').value = '';
+                    document.getElementById('quickContactPhone').value = '';
+                    document.getElementById('quickContactCompany').value = '';
+                    loadContacts();
+                    loadOpportunities();
+                }
+            } catch (e) {
+                showError('quickContactError', e.message);
+            }
+        }
+
+        function openAddContactModal() {
+            document.getElementById('addContactModal').style.display = 'block';
+        }
+
+        function closeAddContactModal() {
+            document.getElementById('addContactModal').style.display = 'none';
+        }
+
+        function openEditContactModal(contactId) {
+            const contact = allContacts.find(c => c.id === contactId);
+            if (!contact) return;
+
+            document.getElementById('editContactName').value = contact.name;
+            document.getElementById('editContactTitle').value = contact.title || '';
+            document.getElementById('editContactCompany').value = contact.company || '';
+            document.getElementById('editContactEmail').value = contact.email || '';
+            document.getElementById('editContactAdditionalInfo').value = contact.additional_info || '';
+
+            const phoneContainer = document.getElementById('editPhoneNumbers');
+            const phones = contact.phone ? contact.phone.split('; ') : [''];
+            phoneContainer.innerHTML = phones.map((phone, idx) => `
+                <input type="tel" class="edit-phone-input" placeholder="Phone number" value="${formatPhoneNumber(phone)}" oninput="handlePhoneInput(this)">
+            `).join('');
+
+            window.currentEditContactId = contactId;
+            document.getElementById('editContactModal').style.display = 'block';
+        }
+
+        function closeEditContactModal() {
+            document.getElementById('editContactModal').style.display = 'none';
+        }
+
+        function addEditPhoneField() {
+            const container = document.getElementById('editPhoneNumbers');
+            const input = document.createElement('input');
+            input.type = 'tel';
+            input.className = 'edit-phone-input';
+            input.placeholder = 'Phone number';
+            input.setAttribute('oninput', 'handlePhoneInput(this)');
+            container.appendChild(input);
+        }
+
+        async function saveContactChanges() {
+            const contactId = window.currentEditContactId;
+            const phones = Array.from(document.querySelectorAll('.edit-phone-input')).map(el => el.value).filter(v => v);
+            
+            const data = {
+                name: document.getElementById('editContactName').value,
+                email: document.getElementById('editContactEmail').value,
+                phone: phones.join('; '),
+                company: document.getElementById('editContactCompany').value,
+                title: document.getElementById('editContactTitle').value,
+                additional_info: document.getElementById('editContactAdditionalInfo').value
+            };
+
+            if (!data.name) {
+                showError('editContactError', 'Name is required');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_URL}/contacts/${contactId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (res.ok) {
+                    showSuccess('editContactSuccess', 'Contact updated!');
+                    setTimeout(() => {
+                        closeEditContactModal();
+                        loadContacts();
+                    }, 1000);
+                } else {
+                    showError('editContactError', 'Failed to update contact');
+                }
+            } catch (e) {
+                showError('editContactError', e.message);
+            }
+        }
+
+        // ===== OPPORTUNITIES =====
+        async function loadOpportunities() {
+            try {
+                const res = await fetch(`${API_URL}/deals`);
+                allOpportunities = await res.json();
+                updateTopOpportunities();
+                updateAllOpportunitiesTable();
+                updateCharts();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function updateTopOpportunities() {
+            const sorted = [...allOpportunities]
+                .filter(o => o.status === 'open')
+                .sort((a, b) => b.value - a.value)
+                .slice(0, 10);
+
+            const tbody = document.getElementById('topOppsBody');
+            if (!sorted.length) {
+                tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No opportunities</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = sorted.map(o => `
+                <tr>
+                    <td><span class="opp-link" onclick="openOppModal(${o.id})">${o.deal_name}</span></td>
+                    <td><span class="stage-badge">${o.stage.replace(/_/g, ' ')}</span></td>
+                    <td>${formatCurrency(o.value)}</td>
+                    <td><span class="stage-badge ${getProbabilityColor(o.probability)}">${o.probability}%</span></td>
+                </tr>
+            `).join('');
+        }
+
+        function updateAllOpportunitiesTable() {
+            const tbody = document.getElementById('allOppsBody');
+            if (!allOpportunities.length) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No opportunities</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = allOpportunities.map(o => `
+                <tr>
+                    <td><span class="opp-link" onclick="openOppModal(${o.id})">${o.deal_name}</span></td>
+                    <td>${o.contact_name}</td>
+                    <td>${o.stage.replace(/_/g, ' ')}</td>
+                    <td>${formatCurrency(o.value)}</td>
+                    <td><span class="stage-badge ${getProbabilityColor(o.probability)}">${o.probability}%</span></td>
+                </tr>
+            `).join('');
+        }
+
+        async function addOpportunity() {
+            const data = {
+                contact_id: parseInt(document.getElementById('oppContact').value),
+                deal_name: document.getElementById('oppName').value,
+                value: parseFloat(document.getElementById('oppAmount').value),
+                stage: document.getElementById('oppStage').value,
+                probability: parseInt(document.getElementById('oppProbability').value),
+                lead_source: document.getElementById('oppLeadSource').value,
+                budget: document.getElementById('oppBudget').value,
+                authority: document.getElementById('oppAuthority').value,
+                need: document.getElementById('oppNeed').value,
+                timeline: document.getElementById('oppTimeline').value,
+                status: 'open'
+            };
+
+            if (!data.contact_id || !data.deal_name || !data.value || !data.stage) {
+                showError('oppError', 'All required fields needed');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_URL}/deals`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (res.ok) {
+                    showSuccess('oppSuccess', 'Opportunity created!');
+                    document.getElementById('oppContact').value = '';
+                    document.getElementById('oppName').value = '';
+                    document.getElementById('oppAmount').value = '';
+                    document.getElementById('oppStage').value = '';
+                    document.getElementById('oppProbability').value = '50';
+                    document.getElementById('oppLeadSource').value = '';
+                    document.getElementById('oppBudget').value = '';
+                    document.getElementById('oppAuthority').value = '';
+                    document.getElementById('oppNeed').value = '';
+                    document.getElementById('oppTimeline').value = '';
+                    loadOpportunities();
+                    loadMetrics();
+                }
+            } catch (e) {
+                showError('oppError', e.message);
+            }
+        }
+
+        function openOppModal(oppId) {
+            const opp = allOpportunities.find(o => o.id === oppId);
+            if (!opp) return;
+
+            document.getElementById('modalOppName').textContent = opp.deal_name;
+            
+            let html = `
+                <div class="opportunity-detail">
+                    <h3>Opportunity Details</h3>
+                    <div class="detail-row">
+                        <div class="detail-item">
+                            <div class="detail-label">Contact</div>
+                            <div class="detail-value">${opp.contact_name}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Amount</div>
+                            <div class="detail-value">${formatCurrency(opp.value)}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Stage</div>
+                            <div class="detail-value">${opp.stage.replace(/_/g, ' ')}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Probability</div>
+                            <div class="detail-value">${opp.probability}%</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Lead Source</div>
+                            <div class="detail-value">${opp.lead_source || '-'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Status</div>
+                            <div class="detail-value">${opp.status}</div>
+                        </div>
+                    </div>
+
+                    <h3 style="margin-top: 20px;">BANT Qualification</h3>
+                    <div class="detail-row">
+                        <div class="detail-item">
+                            <div class="detail-label">Budget</div>
+                            <div class="detail-value">${opp.budget || '-'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Authority</div>
+                            <div class="detail-value">${opp.authority || '-'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Need</div>
+                            <div class="detail-value">${opp.need || '-'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Timeline</div>
+                            <div class="detail-value">${opp.timeline || '-'}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <h3>Next Steps</h3>
+                <textarea id="nextStepsText" style="width: 100%; min-height: 80px;" placeholder="Enter next steps for this opportunity..."></textarea>
+                <button onclick="saveNextSteps(${oppId})" style="margin-top: 10px; width: auto;">Save Next Steps</button>
+
+                <div class="activity-log">
+                    <h3>Activities</h3>
+                    <div id="oppActivities">
+                        <div class="loading">Loading activities...</div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('modalOppContent').innerHTML = html;
+            document.getElementById('opportunityModal').style.display = 'block';
+            loadOppActivities(oppId);
+        }
+
+        function closeOppModal() {
+            document.getElementById('opportunityModal').style.display = 'none';
+        }
+
+        async function loadOppActivities(oppId) {
+            try {
+                const res = await fetch(`${API_URL}/activities/${oppId}`);
+                const activities = await res.json();
+                const div = document.getElementById('oppActivities');
+
+                if (!activities.length) {
+                    div.innerHTML = '<div class="empty-state">No activities logged</div>';
+                    return;
+                }
+
+                div.innerHTML = activities.map(a => {
+                    const date = new Date(a.created_at).toLocaleDateString();
+                    return `
+                        <div class="activity-item">
+                            <div class="activity-header">
+                                <span class="activity-type">${a.activity_type.toUpperCase()}</span>
+                                <span class="activity-date">${date}</span>
+                            </div>
+                            ${a.description ? `<div class="activity-desc">${a.description}</div>` : ''}
+                        </div>
+                    `;
+                }).join('');
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function saveNextSteps(oppId) {
+            const nextSteps = document.getElementById('nextStepsText').value;
+            alert('Next Steps saved! (Feature placeholder - implement as needed)');
+        }
+
+        // ===== METRICS =====
+        async function loadMetrics() {
+            try {
+                const res = await fetch(`${API_URL}/revenue`);
+                const revenue = await res.json();
+                
+                document.getElementById('closedThisQuarter').textContent = formatCurrency(revenue.realized);
+                document.getElementById('myPipeline').textContent = formatCurrency(revenue.pipeline);
+                document.getElementById('myForecast').textContent = formatCurrency(revenue.forecasted);
+                document.getElementById('totalRevenue').textContent = formatCurrency(revenue.realized);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // ===== PIPELINE FUNNEL =====
+        function buildFunnelChart() {
+            const stages = ['qualification', 'needs_analysis', 'proposal', 'negotiation'];
+            const stageNames = {
+                qualification: 'Qualification',
+                needs_analysis: 'Needs Analysis',
+                proposal: 'Proposal/Quote',
+                negotiation: 'Negotiation'
+            };
+            const stageClasses = {
+                qualification: 'funnel-qual',
+                needs_analysis: 'funnel-needs',
+                proposal: 'funnel-proposal',
+                negotiation: 'funnel-neg'
+            };
+            
+            let html = '';
+
+            stages.forEach(stage => {
+                const opps = allOpportunities.filter(o => o.stage === stage && o.status === 'open');
+                const total = opps.reduce((s, o) => s + o.value, 0);
+                const count = opps.length;
+
+                html += `
+                    <div class="funnel-stage ${stageClasses[stage]}">
+                        <span>${stageNames[stage]} (${count} deals)</span>
+                        <span>${formatCurrency(total)}</span>
+                    </div>
+                `;
+            });
+
+            document.getElementById('funnelChart').innerHTML = html;
+        }
+
+        // ===== CHARTS =====
+        function updateCharts() {
+            updatePipelineChart();
+            updateForecastChart();
+        }
+
+        function updatePipelineChart() {
+            const stages = ['qualification', 'needs_analysis', 'proposal', 'negotiation'];
+            const stageNames = {
+                qualification: 'Qualification',
+                needs_analysis: 'Needs Analysis',
+                proposal: 'Proposal/Quote',
+                negotiation: 'Negotiation'
+            };
+            
+            const data = stages.map(s => {
+                const opps = allOpportunities.filter(o => o.stage === s && o.status === 'open');
+                return opps.reduce((sum, o) => sum + o.value, 0);
+            });
+
+            const ctx = document.getElementById('pipelineChart').getContext('2d');
+            if (pipelineChart) pipelineChart.destroy();
+
+            pipelineChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: stages.map(s => stageNames[s]),
+                    datasets: [{
+                        label: 'Pipeline Value',
+                        data: data,
+                        backgroundColor: ['#d4edda', '#90ee90', '#56d856', '#1a5a1a'],
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { callback: v => '$' + (v/1000).toFixed(0) + 'k' } }
+                    }
+                }
+            });
+        }
+
+        function updateForecastChart() {
+            const open = allOpportunities.filter(o => o.status === 'open').reduce((s, o) => s + (o.value * o.probability / 100), 0);
+            const closed = allOpportunities.filter(o => o.status === 'closed').reduce((s, o) => s + o.value, 0);
+
+            const ctx = document.getElementById('forecastChart').getContext('2d');
+            if (forecastChart) forecastChart.destroy();
+
+            forecastChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Forecast', 'Closed'],
+                    datasets: [{
+                        data: [open, closed],
+                        backgroundColor: ['#0070d2', '#1b6e0b']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+        }
+
+        // ===== ACTIVITIES =====
+        async function loadActivityOpportunities() {
+            const list = document.getElementById('activitiesOppList');
+            const opps = allOpportunities.filter(o => o.status === 'open');
+            
+            if (!opps.length) {
+                list.innerHTML = '<div class="empty-state">No open opportunities</div>';
+                return;
+            }
+
+            list.innerHTML = opps.map(o => `
+                <div class="contact-item" onclick="selectActivityOpp(${o.id}, '${o.deal_name}')">
+                    <h4>${o.deal_name}</h4>
+                    <p>${o.contact_name}</p>
+                </div>
+            `).join('');
+        }
+
+        function selectActivityOpp(oppId, oppName) {
+            selectedOppId = oppId;
+            document.getElementById('noOppSelected').style.display = 'none';
+            document.getElementById('activityPanel').style.display = 'block';
+            document.getElementById('selectedOppInfo').innerHTML = `<strong>${oppName}</strong>`;
+            document.getElementById('activityDate').valueAsDate = new Date();
+            loadActivityHistory();
+        }
+
+        async function loadActivityHistory() {
+            if (!selectedOppId) return;
+            try {
+                const res = await fetch(`${API_URL}/activities/${selectedOppId}`);
+                const activities = await res.json();
+                const hist = document.getElementById('activityHistory');
+
+                if (!activities.length) {
+                    hist.innerHTML = '<div class="empty-state">No activities logged</div>';
+                    return;
+                }
+
+                hist.innerHTML = activities.map(a => {
+                    const date = new Date(a.created_at).toLocaleDateString();
+                    return `
+                        <div class="activity-item">
+                            <div class="activity-header">
+                                <span class="activity-type">${a.activity_type.toUpperCase()}</span>
+                                <span class="activity-date">${date}</span>
+                            </div>
+                            ${a.description ? `<div class="activity-desc">${a.description}</div>` : ''}
+                        </div>
+                    `;
+                }).join('');
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function logActivity() {
+            if (!selectedOppId) {
+                showError('activityError', 'Select an opportunity first');
+                return;
+            }
+
+            const type = document.getElementById('activityType').value;
+            const date = document.getElementById('activityDate').value;
+            const desc = document.getElementById('activityDesc').value;
+
+            if (!type || !date) {
+                showError('activityError', 'Type and date are required');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_URL}/activities`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ deal_id: selectedOppId, activity_type: type, description: `[${date}] ${desc}` })
+                });
+
+                if (res.ok) {
+                    document.getElementById('activityType').value = '';
+                    document.getElementById('activityDesc').value = '';
+                    document.getElementById('activityDate').valueAsDate = new Date();
+                    loadActivityHistory();
+                }
+            } catch (e) {
+                showError('activityError', e.message);
+            }
+        }
+
+        // ===== INIT =====
+        document.addEventListener('DOMContentLoaded', () => {
+            loadContacts();
+            loadOpportunities();
+            loadMetrics();
+
+            setInterval(() => {
+                loadOpportunities();
+                loadMetrics();
+            }, 10000);
+        });
+
+        // Close modals on outside click
+        window.onclick = function(event) {
+            const oppModal = document.getElementById('opportunityModal');
+            const contactModal = document.getElementById('addContactModal');
+            if (event.target == oppModal) oppModal.style.display = 'none';
+            if (event.target == contactModal) contactModal.style.display = 'none';
+        }
+    </script>
+</body>
+</html>
