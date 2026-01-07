@@ -349,7 +349,11 @@ from flask import Flask, jsonify, request, send_from_directory
 
 @app.route('/')
 def serve_index():
-    return send_from_directory('.', 'index.html')
+    try:
+        with open('index.html', 'r') as f:
+            return f.read(), 200, {'Content-Type': 'text/html'}
+    except Exception as e:
+        return f"Error: {str(e)}", 500
 
 if __name__ == '__main__':
     app.run(debug=False, port=3000, host='0.0.0.0')
