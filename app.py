@@ -1,285 +1,351 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import sqlite3
-import os
+import json
 from datetime import datetime
 
 app = Flask(__name__)
-CORS(app)  # This allows your frontend to talk to your backend
+CORS(app)
 
-
-
-# Database configuration
 DATABASE = 'crm.db'
 
-def get_db_connection():
-    """Create a connection to the database"""
+def get_db():
     conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row  # This lets us access columns by name
+    conn.row_factory = sqlite3.Row
     return conn
 
 def init_db():
-    """Initialize the database with tables if they don't exist"""
-    conn = get_db_connection()
+    conn = get_db()
     c = conn.cursor()
     
-    # Create contacts table
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS contacts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            email TEXT,
-            phone TEXT,
-            company TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
+    # Contacts table with new fields
+    c.execute('''CREATE TABLE IF NOT EXISTS contacts (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT,
+        phone TEXT,
+        company TEXT,
+        title TEXT,
+        website TEXT,
+        additional_info TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
     
-    # Create deals table
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS deals (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            contact_id INTEGER NOT NULL,
-            deal_name TEXT NOT NULL,
-            value REAL NOT NULL,
-            stage TEXT DEFAULT 'qualification',
-            status TEXT DEFAULT 'open',
-            probability INTEGER DEFAULT 0,
-            lead_source TEXT,
-            budget TEXT,
-            authority TEXT,
-            need TEXT,
-            timeline TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            closed_at TIMESTAMP,
-            FOREIGN KEY (contact_id) REFERENCES contacts(id)
-        )
-    ''')
+    # SKU table
+    c.execute('''CREATE TABLE IF NOT EXISTS skus (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        subcategory TEXT NOT NULL,
+        UNIQUE(name, category, subcategory)
+    )''')
     
-    # Create activities table
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS activities (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            deal_id INTEGER NOT NULL,
-            activity_type TEXT NOT NULL,
-            description TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (deal_id) REFERENCES deals(id)
-        )
-    ''')
+    # Opportunities table - added expected_close_date
+    c.execute('''CREATE TABLE IF NOT EXISTS deals (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        contact_id INTEGER,
+        value REAL,
+        probability INTEGER,
+        stage TEXT,
+        status TEXT,
+        lead_source TEXT,
+        budget TEXT,
+        authority TEXT,
+        need TEXT,
+        timeline TEXT,
+        expected_close_date TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(contact_id) REFERENCES contacts(id)
+    )''')
+    
+    # Opportunity-SKU junction table (many-to-many)
+    c.execute('''CREATE TABLE IF NOT EXISTS deal_skus (
+        id INTEGER PRIMARY KEY,
+        deal_id INTEGER NOT NULL,
+        sku_id INTEGER NOT NULL,
+        FOREIGN KEY(deal_id) REFERENCES deals(id) ON DELETE CASCADE,
+        FOREIGN KEY(sku_id) REFERENCES skus(id) ON DELETE CASCADE,
+        UNIQUE(deal_id, sku_id)
+    )''')
+    
+    # Activities table - added next_steps
+    c.execute('''CREATE TABLE IF NOT EXISTS activities (
+        id INTEGER PRIMARY KEY,
+        deal_id INTEGER,
+        contact_id INTEGER,
+        type TEXT,
+        description TEXT,
+        next_steps TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(deal_id) REFERENCES deals(id),
+        FOREIGN KEY(contact_id) REFERENCES contacts(id)
+    )''')
     
     conn.commit()
     conn.close()
 
-# Initialize database when app starts
-init_db()
+def migrate_db():
+    """Add new columns if they don't exist"""
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Check and add expected_close_date to deals
+    try:
+        c.execute("ALTER TABLE deals ADD COLUMN expected_close_date TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    # Check and add next_steps to activities
+    try:
+        c.execute("ALTER TABLE activities ADD COLUMN next_steps TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    conn.close()
 
-# ===== CONTACT ROUTES =====
+def populate_skus():
+    """Populate SKU table with predefined values"""
+    conn = get_db()
+    c = conn.cursor()
+    
+    skus = [
+        # Raw Materials - Fiber
+        ('Premium Clean Long Fiber', 'Raw Materials', 'Fiber'),
+        ('Non-woven Grade, Clean Fiber', 'Raw Materials', 'Fiber'),
+        ('Short Fiber/Hurd Mix', 'Raw Materials', 'Fiber'),
+        # Raw Materials - Hurd
+        ('H1 Hurd - 3/4"', 'Raw Materials', 'Hurd'),
+        ('H2 Hurd - 1/2"', 'Raw Materials', 'Hurd'),
+        ('H3 Hurd - 1/16"', 'Raw Materials', 'Hurd'),
+        # Products - Insulation
+        ('2"x24"x48"', 'Products', 'Insulation'),
+        ('3.5"x24"x48"', 'Products', 'Insulation'),
+        ('5.5"x24"x48"', 'Products', 'Insulation'),
+        ('7.5"x24"x48"', 'Products', 'Insulation'),
+        # Products - Acoustic Panels
+        ('1"x24"x48"', 'Products', 'Acoustic Panels'),
+        ('2"x24"x48"', 'Products', 'Acoustic Panels'),
+        ('4"x24"x48"', 'Products', 'Acoustic Panels'),
+    ]
+    
+    for sku_name, category, subcategory in skus:
+        try:
+            c.execute('INSERT INTO skus (name, category, subcategory) VALUES (?, ?, ?)',
+                     (sku_name, category, subcategory))
+        except sqlite3.IntegrityError:
+            pass  # SKU already exists
+    
+    conn.commit()
+    conn.close()
+
+init_db()
+migrate_db()
+populate_skus()
+
+# ==================== CONTACTS ENDPOINTS ====================
 
 @app.route('/api/contacts', methods=['GET'])
 def get_contacts():
-    """Get all contacts"""
-    conn = get_db_connection()
-    contacts = conn.execute('SELECT * FROM contacts ORDER BY created_at DESC').fetchall()
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('SELECT * FROM contacts ORDER BY name')
+    contacts = c.fetchall()
     conn.close()
-    
     return jsonify([dict(contact) for contact in contacts])
 
 @app.route('/api/contacts', methods=['POST'])
-def create_contact():
-    """Create a new contact"""
+def add_contact():
     data = request.json
-    
-    # Validate required fields
-    if not data.get('name'):
-        return jsonify({'error': 'Name is required'}), 400
-    
-    conn = get_db_connection()
+    conn = get_db()
     c = conn.cursor()
-    
-    c.execute('''
-        INSERT INTO contacts (name, email, phone, company)
-        VALUES (?, ?, ?, ?)
-    ''', (
-        data.get('name'),
-        data.get('email'),
-        data.get('phone'),
-        data.get('company')
-    ))
-    
+    c.execute('''INSERT INTO contacts (name, email, phone, company, title, website, additional_info)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)''',
+             (data.get('name'), data.get('email'), data.get('phone'), 
+              data.get('company'), data.get('title'), data.get('website'),
+              data.get('additional_info')))
     conn.commit()
-    new_contact_id = c.lastrowid
+    contact_id = c.lastrowid
     conn.close()
-    
-    return jsonify({'id': new_contact_id, 'message': 'Contact created'}), 201
-
-@app.route('/api/contacts/<int:contact_id>', methods=['GET'])
-def get_contact(contact_id):
-    """Get a specific contact"""
-    conn = get_db_connection()
-    contact = conn.execute('SELECT * FROM contacts WHERE id = ?', (contact_id,)).fetchone()
-    conn.close()
-    
-    if contact is None:
-        return jsonify({'error': 'Contact not found'}), 404
-    
-    return jsonify(dict(contact))
+    return jsonify({'id': contact_id}), 201
 
 @app.route('/api/contacts/<int:contact_id>', methods=['PUT'])
 def update_contact(contact_id):
-    """Update a contact"""
     data = request.json
-    
-    conn = get_db_connection()
+    conn = get_db()
     c = conn.cursor()
-    
-    c.execute('''
-        UPDATE contacts
-        SET name = ?, email = ?, phone = ?, company = ?
-        WHERE id = ?
-    ''', (
-        data.get('name'),
-        data.get('email'),
-        data.get('phone'),
-        data.get('company'),
-        contact_id
-    ))
-    
+    c.execute('''UPDATE contacts 
+                 SET name=?, email=?, phone=?, company=?, title=?, website=?, additional_info=?
+                 WHERE id=?''',
+             (data.get('name'), data.get('email'), data.get('phone'),
+              data.get('company'), data.get('title'), data.get('website'),
+              data.get('additional_info'), contact_id))
     conn.commit()
     conn.close()
-    
-    return jsonify({'message': 'Contact updated'})
+    return jsonify({'success': True})
 
 @app.route('/api/contacts/<int:contact_id>', methods=['DELETE'])
 def delete_contact(contact_id):
-    """Delete a contact"""
-    conn = get_db_connection()
+    conn = get_db()
     c = conn.cursor()
-    
-    c.execute('DELETE FROM contacts WHERE id = ?', (contact_id,))
-    
+    c.execute('DELETE FROM contacts WHERE id=?', (contact_id,))
     conn.commit()
     conn.close()
-    
-    return jsonify({'message': 'Contact deleted'})
+    return jsonify({'success': True})
 
-# ===== DEAL ROUTES =====
+# ==================== SKU ENDPOINTS ====================
+
+@app.route('/api/skus', methods=['GET'])
+def get_skus():
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('SELECT * FROM skus ORDER BY category, subcategory, name')
+    skus = c.fetchall()
+    conn.close()
+    
+    # Organize SKUs by category and subcategory
+    organized = {}
+    for sku in skus:
+        cat = sku['category']
+        subcat = sku['subcategory']
+        if cat not in organized:
+            organized[cat] = {}
+        if subcat not in organized[cat]:
+            organized[cat][subcat] = []
+        organized[cat][subcat].append(dict(sku))
+    
+    return jsonify(organized)
+
+# ==================== DEALS/OPPORTUNITIES ENDPOINTS ====================
 
 @app.route('/api/deals', methods=['GET'])
 def get_deals():
-    """Get all deals with contact info"""
-    conn = get_db_connection()
-    deals = conn.execute('''
-        SELECT deals.*, contacts.name as contact_name, contacts.company
-        FROM deals
-        JOIN contacts ON deals.contact_id = contacts.id
-        ORDER BY deals.created_at DESC
-    ''').fetchall()
-    conn.close()
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('''SELECT d.*, c.name as contact_name FROM deals d
+                 LEFT JOIN contacts c ON d.contact_id = c.id
+                 ORDER BY d.created_at DESC''')
+    deals = c.fetchall()
     
-    return jsonify([dict(deal) for deal in deals])
+    deals_list = []
+    for deal in deals:
+        deal_dict = dict(deal)
+        # Get SKUs for this deal
+        c.execute('''SELECT s.* FROM skus s
+                     INNER JOIN deal_skus ds ON s.id = ds.sku_id
+                     WHERE ds.deal_id = ?''', (deal['id'],))
+        skus = c.fetchall()
+        deal_dict['skus'] = [dict(sku) for sku in skus]
+        deals_list.append(deal_dict)
+    
+    conn.close()
+    return jsonify(deals_list)
 
 @app.route('/api/deals', methods=['POST'])
-def create_deal():
-    """Create a new deal"""
+def add_deal():
     data = request.json
-    
-    # Validate required fields
-    if not data.get('contact_id') or not data.get('deal_name') or not data.get('value'):
-        return jsonify({'error': 'contact_id, deal_name, and value are required'}), 400
-    
-    conn = get_db_connection()
+    conn = get_db()
     c = conn.cursor()
     
-    c.execute('''
-        INSERT INTO deals (contact_id, deal_name, value, stage, status, probability, lead_source, budget, authority, need, timeline)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (
-        data.get('contact_id'),
-        data.get('deal_name'),
-        data.get('value'),
-        data.get('stage', 'qualification'),
-        data.get('status', 'open'),
-        data.get('probability', 0),
-        data.get('lead_source'),
-        data.get('budget'),
-        data.get('authority'),
-        data.get('need'),
-        data.get('timeline')
-    ))
+    c.execute('''INSERT INTO deals (name, contact_id, value, probability, stage, status, 
+                                    lead_source, budget, authority, need, timeline, expected_close_date)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+             (data.get('name'), data.get('contact_id'), data.get('value'),
+              data.get('probability'), data.get('stage'), data.get('status'),
+              data.get('lead_source'), data.get('budget'), data.get('authority'),
+              data.get('need'), data.get('timeline'), data.get('expected_close_date')))
+    
+    deal_id = c.lastrowid
+    
+    # Add SKUs to the deal
+    sku_ids = data.get('sku_ids', [])
+    for sku_id in sku_ids:
+        c.execute('INSERT INTO deal_skus (deal_id, sku_id) VALUES (?, ?)', 
+                 (deal_id, sku_id))
     
     conn.commit()
-    new_deal_id = c.lastrowid
     conn.close()
-    
-    return jsonify({'id': new_deal_id, 'message': 'Deal created'}), 201
+    return jsonify({'id': deal_id}), 201
 
 @app.route('/api/deals/<int:deal_id>', methods=['PUT'])
 def update_deal(deal_id):
-    """Update a deal"""
     data = request.json
-    
-    conn = get_db_connection()
+    conn = get_db()
     c = conn.cursor()
     
-    # If status is being set to closed, record the closed_at timestamp
-    closed_at = None
-    if data.get('status') == 'closed':
-        closed_at = datetime.now().isoformat()
+    c.execute('''UPDATE deals 
+                 SET name=?, contact_id=?, value=?, probability=?, stage=?, status=?,
+                     lead_source=?, budget=?, authority=?, need=?, timeline=?, expected_close_date=?
+                 WHERE id=?''',
+             (data.get('name'), data.get('contact_id'), data.get('value'),
+              data.get('probability'), data.get('stage'), data.get('status'),
+              data.get('lead_source'), data.get('budget'), data.get('authority'),
+              data.get('need'), data.get('timeline'), data.get('expected_close_date'), deal_id))
     
-    c.execute('''
-        UPDATE deals
-        SET deal_name = ?, value = ?, stage = ?, status = ?, probability = ?, lead_source = ?, budget = ?, authority = ?, need = ?, timeline = ?, closed_at = COALESCE(?, closed_at)
-        WHERE id = ?
-    ''', (
-        data.get('deal_name'),
-        data.get('value'),
-        data.get('stage'),
-        data.get('status'),
-        data.get('probability'),
-        data.get('lead_source'),
-        data.get('budget'),
-        data.get('authority'),
-        data.get('need'),
-        data.get('timeline'),
-        closed_at,
-        deal_id
-    ))
+    # Update SKUs - delete old ones and add new ones
+    c.execute('DELETE FROM deal_skus WHERE deal_id=?', (deal_id,))
+    sku_ids = data.get('sku_ids', [])
+    for sku_id in sku_ids:
+        c.execute('INSERT INTO deal_skus (deal_id, sku_id) VALUES (?, ?)', 
+                 (deal_id, sku_id))
     
     conn.commit()
     conn.close()
-    
-    return jsonify({'message': 'Deal updated'})
+    return jsonify({'success': True})
 
 @app.route('/api/deals/<int:deal_id>', methods=['DELETE'])
 def delete_deal(deal_id):
-    """Delete a deal"""
-    conn = get_db_connection()
+    conn = get_db()
     c = conn.cursor()
-    
-    c.execute('DELETE FROM deals WHERE id = ?', (deal_id,))
-    
+    c.execute('DELETE FROM deals WHERE id=?', (deal_id,))
     conn.commit()
     conn.close()
-    
-    return jsonify({'message': 'Deal deleted'})
+    return jsonify({'success': True})
 
-# ===== REVENUE ROUTES =====
+# ==================== ACTIVITIES ENDPOINTS ====================
+
+@app.route('/api/activities', methods=['GET'])
+def get_activities():
+    deal_id = request.args.get('deal_id')
+    conn = get_db()
+    c = conn.cursor()
+    
+    if deal_id:
+        c.execute('SELECT * FROM activities WHERE deal_id=? ORDER BY created_at DESC', (deal_id,))
+    else:
+        c.execute('SELECT * FROM activities ORDER BY created_at DESC')
+    
+    activities = c.fetchall()
+    conn.close()
+    return jsonify([dict(activity) for activity in activities])
+
+@app.route('/api/activities', methods=['POST'])
+def add_activity():
+    data = request.json
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('''INSERT INTO activities (deal_id, contact_id, type, description, next_steps)
+                 VALUES (?, ?, ?, ?, ?)''',
+             (data.get('deal_id'), data.get('contact_id'), data.get('type'), 
+              data.get('description'), data.get('next_steps')))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True}), 201
+
+# ==================== REVENUE/METRICS ENDPOINTS ====================
 
 @app.route('/api/revenue', methods=['GET'])
 def get_revenue():
-    conn = get_db_connection()
+    conn = get_db()
     c = conn.cursor()
     
-    # Realized revenue = closed deals only (all time)
     realized = c.execute('SELECT SUM(value) as total FROM deals WHERE status = ?', ('closed',)).fetchone()
-    
-    # Pipeline = total value of ALL open deals (not weighted)
     pipeline = c.execute('SELECT SUM(value) as total FROM deals WHERE status = ?', ('open',)).fetchone()
-    
-    # Forecasted revenue = weighted by probability (open deals only)
     open_deals = c.execute('SELECT value, probability FROM deals WHERE status = ?', ('open',)).fetchall()
-    forecasted = sum((deal['value'] * deal['probability'] / 100) for deal in open_deals) if open_deals else 0
+    
+    forecasted = sum((deal['value'] * deal['probability'] / 100) for deal in open_deals if deal['value'] and deal['probability'])
     
     conn.close()
     return jsonify({
@@ -288,64 +354,82 @@ def get_revenue():
         'realized': realized['total'] or 0
     })
 
-# ===== ACTIVITIES ROUTES =====
+# ==================== PIPELINE ANALYTICS ENDPOINT ====================
 
-@app.route('/api/activities/<int:deal_id>', methods=['GET'])
-def get_activities(deal_id):
-    """Get all activities for a deal"""
-    conn = get_db_connection()
-    activities = conn.execute(
-        'SELECT * FROM activities WHERE deal_id = ? ORDER BY created_at DESC',
-        (deal_id,)
-    ).fetchall()
-    conn.close()
-    
-    return jsonify([dict(activity) for activity in activities])
-
-@app.route('/api/activities', methods=['POST'])
-def create_activity():
-    """Create a new activity"""
-    data = request.json
-    
-    if not data.get('deal_id') or not data.get('activity_type'):
-        return jsonify({'error': 'deal_id and activity_type are required'}), 400
-    
-    conn = get_db_connection()
+@app.route('/api/pipeline/analytics', methods=['GET'])
+def get_pipeline_analytics():
+    conn = get_db()
     c = conn.cursor()
     
-    c.execute('''
-        INSERT INTO activities (deal_id, activity_type, description)
-        VALUES (?, ?, ?)
-    ''', (
-        data.get('deal_id'),
-        data.get('activity_type'),
-        data.get('description')
-    ))
+    # Get all open deals with details
+    c.execute('''SELECT d.*, c.name as contact_name FROM deals d
+                 LEFT JOIN contacts c ON d.contact_id = c.id
+                 WHERE d.status = 'open'
+                 ORDER BY d.expected_close_date ASC, d.value DESC''')
+    deals = c.fetchall()
     
-    conn.commit()
-    new_activity_id = c.lastrowid
+    # Organize by stage
+    stages = {}
+    stage_order = ['qualification', 'needs_analysis', 'proposal', 'negotiation']
+    
+    for stage in stage_order:
+        stages[stage] = {
+            'deals': [],
+            'total_value': 0,
+            'weighted_value': 0,
+            'count': 0
+        }
+    
+    for deal in deals:
+        deal_dict = dict(deal)
+        stage = deal['stage']
+        if stage in stages:
+            # Get SKUs for this deal
+            c.execute('''SELECT s.* FROM skus s
+                         INNER JOIN deal_skus ds ON s.id = ds.sku_id
+                         WHERE ds.deal_id = ?''', (deal['id'],))
+            skus = c.fetchall()
+            deal_dict['skus'] = [dict(sku) for sku in skus]
+            
+            stages[stage]['deals'].append(deal_dict)
+            stages[stage]['total_value'] += deal['value'] or 0
+            stages[stage]['weighted_value'] += (deal['value'] or 0) * (deal['probability'] or 0) / 100
+            stages[stage]['count'] += 1
+    
+    # Calculate totals
+    total_pipeline = sum(s['total_value'] for s in stages.values())
+    total_weighted = sum(s['weighted_value'] for s in stages.values())
+    total_deals = sum(s['count'] for s in stages.values())
+    
+    # Group by expected close date (monthly)
+    monthly_forecast = {}
+    for deal in deals:
+        close_date = deal['expected_close_date']
+        if close_date:
+            month_key = close_date[:7]  # YYYY-MM
+        else:
+            month_key = 'No Date Set'
+        
+        if month_key not in monthly_forecast:
+            monthly_forecast[month_key] = {'total': 0, 'weighted': 0, 'count': 0}
+        
+        monthly_forecast[month_key]['total'] += deal['value'] or 0
+        monthly_forecast[month_key]['weighted'] += (deal['value'] or 0) * (deal['probability'] or 0) / 100
+        monthly_forecast[month_key]['count'] += 1
+    
     conn.close()
     
-    return jsonify({'id': new_activity_id, 'message': 'Activity created'}), 201
+    return jsonify({
+        'stages': stages,
+        'monthly_forecast': monthly_forecast,
+        'totals': {
+            'pipeline': total_pipeline,
+            'weighted': total_weighted,
+            'deal_count': total_deals
+        }
+    })
 
-# ===== HEALTH CHECK =====
-
-@app.route('/api/health', methods=['GET'])
-def health():
-    """Simple health check to verify the app is running"""
-    return jsonify({'status': 'CRM Backend is running!'}), 200
-@app.route('/')
-def index():
-    return send_from_directory('.', 'index.html')
-
-@app.route('/<path:path>')
-def static_files(path):
-    return send_from_directory('.', path)
-@app.route('/')
-def serve_html():
-    with open('index.html', 'r') as f:
-        return f.read()
-from flask import Flask, jsonify, request, send_from_directory
+# ==================== SERVE HTML ====================
 
 @app.route('/')
 def serve_index():
@@ -354,6 +438,19 @@ def serve_index():
             return f.read(), 200, {'Content-Type': 'text/html'}
     except Exception as e:
         return f"Error: {str(e)}", 500
+
+@app.route('/assets/<path:filename>')
+def serve_assets(filename):
+    try:
+        with open(f'assets/{filename}', 'rb') as f:
+            if filename.endswith('.png'):
+                return f.read(), 200, {'Content-Type': 'image/png'}
+            elif filename.endswith('.jpg'):
+                return f.read(), 200, {'Content-Type': 'image/jpeg'}
+            else:
+                return f.read(), 200, {'Content-Type': 'application/octet-stream'}
+    except Exception as e:
+        return f"Asset not found: {str(e)}", 404
 
 if __name__ == '__main__':
     app.run(debug=False, port=3000, host='0.0.0.0')
