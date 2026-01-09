@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import sqlite3
 import json
+import time
 from datetime import datetime
 import traceback
 
@@ -11,13 +12,29 @@ CORS(app)
 DATABASE = 'crm.db'
 
 def get_db():
-    conn = sqlite3.connect(DATABASE)
+    conn = sqlite3.connect(DATABASE, timeout=60)  # Wait up to 60 seconds if locked
     conn.row_factory = sqlite3.Row
     return conn
+
+def execute_with_retry(func, max_retries=5):
+    """Execute a database function with retry logic for locked database"""
+    for attempt in range(max_retries):
+        try:
+            return func()
+        except sqlite3.OperationalError as e:
+            if "locked" in str(e) and attempt < max_retries - 1:
+                print(f"Database locked, retrying in {attempt + 1} seconds...")
+                time.sleep(attempt + 1)  # Exponential backoff
+            else:
+                raise
 
 def init_db():
     conn = get_db()
     c = conn.cursor()
+    
+    # Enable WAL mode for better concurrency (do this first)
+    c.execute('PRAGMA journal_mode=WAL')
+    print("WAL mode enabled")
     
     # Contacts table with new fields
     c.execute('''CREATE TABLE IF NOT EXISTS contacts (
@@ -330,31 +347,37 @@ def get_deals():
 
 @app.route('/api/deals', methods=['POST'])
 def add_deal():
-    try:
-        data = request.json
-        print(f"Adding deal with data: {data}")
+    def do_add():
         conn = get_db()
-        c = conn.cursor()
-        
-        c.execute('''INSERT INTO deals (name, contact_id, value, probability, stage, status, 
-                                        lead_source, budget, authority, need, timeline, expected_close_date)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                 (data.get('name'), data.get('contact_id'), data.get('value'),
-                  data.get('probability'), data.get('stage'), data.get('status'),
-                  data.get('lead_source'), data.get('budget'), data.get('authority'),
-                  data.get('need'), data.get('timeline'), data.get('expected_close_date')))
-        
-        deal_id = c.lastrowid
-        
-        # Add SKUs to the deal
-        sku_ids = data.get('sku_ids', [])
-        for sku_id in sku_ids:
-            c.execute('INSERT INTO deal_skus (deal_id, sku_id) VALUES (?, ?)', 
-                     (deal_id, sku_id))
-        
-        conn.commit()
-        conn.close()
-        print(f"Deal created successfully with id: {deal_id}")
+        try:
+            data = request.json
+            print(f"Adding deal with data: {data}")
+            c = conn.cursor()
+            
+            c.execute('''INSERT INTO deals (name, contact_id, value, probability, stage, status, 
+                                            lead_source, budget, authority, need, timeline, expected_close_date)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                     (data.get('name'), data.get('contact_id'), data.get('value'),
+                      data.get('probability'), data.get('stage'), data.get('status'),
+                      data.get('lead_source'), data.get('budget'), data.get('authority'),
+                      data.get('need'), data.get('timeline'), data.get('expected_close_date')))
+            
+            deal_id = c.lastrowid
+            
+            # Add SKUs to the deal
+            sku_ids = data.get('sku_ids', [])
+            for sku_id in sku_ids:
+                c.execute('INSERT INTO deal_skus (deal_id, sku_id) VALUES (?, ?)', 
+                         (deal_id, sku_id))
+            
+            conn.commit()
+            print(f"Deal created successfully with id: {deal_id}")
+            return deal_id
+        finally:
+            conn.close()
+    
+    try:
+        deal_id = execute_with_retry(do_add)
         return jsonify({'id': deal_id}), 201
     except Exception as e:
         print(f"Error in add_deal: {e}")
@@ -363,31 +386,37 @@ def add_deal():
 
 @app.route('/api/deals/<int:deal_id>', methods=['PUT'])
 def update_deal(deal_id):
-    try:
+    def do_update():
         data = request.json
         print(f"Updating deal {deal_id} with data: {data}")
         conn = get_db()
-        c = conn.cursor()
-        
-        c.execute('''UPDATE deals 
-                     SET name=?, contact_id=?, value=?, probability=?, stage=?, status=?,
-                         lead_source=?, budget=?, authority=?, need=?, timeline=?, expected_close_date=?
-                     WHERE id=?''',
-                 (data.get('name'), data.get('contact_id'), data.get('value'),
-                  data.get('probability'), data.get('stage'), data.get('status'),
-                  data.get('lead_source'), data.get('budget'), data.get('authority'),
-                  data.get('need'), data.get('timeline'), data.get('expected_close_date'), deal_id))
-        
-        # Update SKUs - delete old ones and add new ones
-        c.execute('DELETE FROM deal_skus WHERE deal_id=?', (deal_id,))
-        sku_ids = data.get('sku_ids', [])
-        for sku_id in sku_ids:
-            c.execute('INSERT INTO deal_skus (deal_id, sku_id) VALUES (?, ?)', 
-                     (deal_id, sku_id))
-        
-        conn.commit()
-        conn.close()
-        print(f"Deal {deal_id} updated successfully")
+        try:
+            c = conn.cursor()
+            
+            c.execute('''UPDATE deals 
+                         SET name=?, contact_id=?, value=?, probability=?, stage=?, status=?,
+                             lead_source=?, budget=?, authority=?, need=?, timeline=?, expected_close_date=?
+                         WHERE id=?''',
+                     (data.get('name'), data.get('contact_id'), data.get('value'),
+                      data.get('probability'), data.get('stage'), data.get('status'),
+                      data.get('lead_source'), data.get('budget'), data.get('authority'),
+                      data.get('need'), data.get('timeline'), data.get('expected_close_date'), deal_id))
+            
+            # Update SKUs - delete old ones and add new ones
+            c.execute('DELETE FROM deal_skus WHERE deal_id=?', (deal_id,))
+            sku_ids = data.get('sku_ids', [])
+            for sku_id in sku_ids:
+                c.execute('INSERT INTO deal_skus (deal_id, sku_id) VALUES (?, ?)', 
+                         (deal_id, sku_id))
+            
+            conn.commit()
+            print(f"Deal {deal_id} updated successfully")
+            return True
+        finally:
+            conn.close()
+    
+    try:
+        execute_with_retry(do_update)
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error in update_deal: {e}")
