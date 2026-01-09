@@ -226,13 +226,19 @@ print("Database setup complete!")
 
 @app.route('/api/contacts', methods=['GET'])
 def get_contacts():
-    try:
+    def do_get():
         conn = get_db()
-        c = conn.cursor()
-        c.execute('SELECT * FROM contacts ORDER BY name')
-        contacts = c.fetchall()
-        conn.close()
-        return jsonify([dict(contact) for contact in contacts])
+        try:
+            c = conn.cursor()
+            c.execute('SELECT * FROM contacts ORDER BY name')
+            contacts = c.fetchall()
+            return [dict(contact) for contact in contacts]
+        finally:
+            conn.close()
+
+    try:
+        contacts = execute_with_retry(do_get)
+        return jsonify(contacts)
     except Exception as e:
         print(f"Error in get_contacts: {e}")
         traceback.print_exc()
@@ -240,18 +246,23 @@ def get_contacts():
 
 @app.route('/api/contacts', methods=['POST'])
 def add_contact():
-    try:
+    def do_add():
         data = request.json
         conn = get_db()
-        c = conn.cursor()
-        c.execute('''INSERT INTO contacts (name, email, phone, company, title, website, additional_info)
-                     VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                 (data.get('name'), data.get('email'), data.get('phone'), 
-                  data.get('company'), data.get('title'), data.get('website'),
-                  data.get('additional_info')))
-        conn.commit()
-        contact_id = c.lastrowid
-        conn.close()
+        try:
+            c = conn.cursor()
+            c.execute('''INSERT INTO contacts (name, email, phone, company, title, website, additional_info)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                     (data.get('name'), data.get('email'), data.get('phone'),
+                      data.get('company'), data.get('title'), data.get('website'),
+                      data.get('additional_info')))
+            conn.commit()
+            return c.lastrowid
+        finally:
+            conn.close()
+
+    try:
+        contact_id = execute_with_retry(do_add)
         return jsonify({'id': contact_id}), 201
     except Exception as e:
         print(f"Error in add_contact: {e}")
@@ -260,18 +271,24 @@ def add_contact():
 
 @app.route('/api/contacts/<int:contact_id>', methods=['PUT'])
 def update_contact(contact_id):
-    try:
+    def do_update():
         data = request.json
         conn = get_db()
-        c = conn.cursor()
-        c.execute('''UPDATE contacts 
-                     SET name=?, email=?, phone=?, company=?, title=?, website=?, additional_info=?
-                     WHERE id=?''',
-                 (data.get('name'), data.get('email'), data.get('phone'),
-                  data.get('company'), data.get('title'), data.get('website'),
-                  data.get('additional_info'), contact_id))
-        conn.commit()
-        conn.close()
+        try:
+            c = conn.cursor()
+            c.execute('''UPDATE contacts
+                         SET name=?, email=?, phone=?, company=?, title=?, website=?, additional_info=?
+                         WHERE id=?''',
+                     (data.get('name'), data.get('email'), data.get('phone'),
+                      data.get('company'), data.get('title'), data.get('website'),
+                      data.get('additional_info'), contact_id))
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+    try:
+        execute_with_retry(do_update)
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error in update_contact: {e}")
@@ -280,12 +297,18 @@ def update_contact(contact_id):
 
 @app.route('/api/contacts/<int:contact_id>', methods=['DELETE'])
 def delete_contact(contact_id):
-    try:
+    def do_delete():
         conn = get_db()
-        c = conn.cursor()
-        c.execute('DELETE FROM contacts WHERE id=?', (contact_id,))
-        conn.commit()
-        conn.close()
+        try:
+            c = conn.cursor()
+            c.execute('DELETE FROM contacts WHERE id=?', (contact_id,))
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+    try:
+        execute_with_retry(do_delete)
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error in delete_contact: {e}")
@@ -319,26 +342,32 @@ def get_skus():
 
 @app.route('/api/deals', methods=['GET'])
 def get_deals():
-    try:
+    def do_get():
         conn = get_db()
-        c = conn.cursor()
-        c.execute('''SELECT d.*, c.name as contact_name FROM deals d
-                     LEFT JOIN contacts c ON d.contact_id = c.id
-                     ORDER BY d.created_at DESC''')
-        deals = c.fetchall()
-        
-        deals_list = []
-        for deal in deals:
-            deal_dict = dict(deal)
-            # Get SKUs for this deal
-            c.execute('''SELECT s.* FROM skus s
-                         INNER JOIN deal_skus ds ON s.id = ds.sku_id
-                         WHERE ds.deal_id = ?''', (deal['id'],))
-            skus = c.fetchall()
-            deal_dict['skus'] = [dict(sku) for sku in skus]
-            deals_list.append(deal_dict)
-        
-        conn.close()
+        try:
+            c = conn.cursor()
+            c.execute('''SELECT d.*, c.name as contact_name FROM deals d
+                         LEFT JOIN contacts c ON d.contact_id = c.id
+                         ORDER BY d.created_at DESC''')
+            deals = c.fetchall()
+
+            deals_list = []
+            for deal in deals:
+                deal_dict = dict(deal)
+                # Get SKUs for this deal
+                c.execute('''SELECT s.* FROM skus s
+                             INNER JOIN deal_skus ds ON s.id = ds.sku_id
+                             WHERE ds.deal_id = ?''', (deal['id'],))
+                skus = c.fetchall()
+                deal_dict['skus'] = [dict(sku) for sku in skus]
+                deals_list.append(deal_dict)
+
+            return deals_list
+        finally:
+            conn.close()
+
+    try:
+        deals_list = execute_with_retry(do_get)
         return jsonify(deals_list)
     except Exception as e:
         print(f"Error in get_deals: {e}")
@@ -425,12 +454,18 @@ def update_deal(deal_id):
 
 @app.route('/api/deals/<int:deal_id>', methods=['DELETE'])
 def delete_deal(deal_id):
-    try:
+    def do_delete():
         conn = get_db()
-        c = conn.cursor()
-        c.execute('DELETE FROM deals WHERE id=?', (deal_id,))
-        conn.commit()
-        conn.close()
+        try:
+            c = conn.cursor()
+            c.execute('DELETE FROM deals WHERE id=?', (deal_id,))
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+    try:
+        execute_with_retry(do_delete)
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error in delete_deal: {e}")
@@ -441,19 +476,25 @@ def delete_deal(deal_id):
 
 @app.route('/api/activities', methods=['GET'])
 def get_activities():
-    try:
+    def do_get():
         deal_id = request.args.get('deal_id')
         conn = get_db()
-        c = conn.cursor()
-        
-        if deal_id:
-            c.execute('SELECT * FROM activities WHERE deal_id=? ORDER BY created_at DESC', (deal_id,))
-        else:
-            c.execute('SELECT * FROM activities ORDER BY created_at DESC')
-        
-        activities = c.fetchall()
-        conn.close()
-        return jsonify([dict(activity) for activity in activities])
+        try:
+            c = conn.cursor()
+
+            if deal_id:
+                c.execute('SELECT * FROM activities WHERE deal_id=? ORDER BY created_at DESC', (deal_id,))
+            else:
+                c.execute('SELECT * FROM activities ORDER BY created_at DESC')
+
+            activities = c.fetchall()
+            return [dict(activity) for activity in activities]
+        finally:
+            conn.close()
+
+    try:
+        activities = execute_with_retry(do_get)
+        return jsonify(activities)
     except Exception as e:
         print(f"Error in get_activities: {e}")
         traceback.print_exc()
@@ -461,16 +502,22 @@ def get_activities():
 
 @app.route('/api/activities', methods=['POST'])
 def add_activity():
-    try:
+    def do_add():
         data = request.json
         conn = get_db()
-        c = conn.cursor()
-        c.execute('''INSERT INTO activities (deal_id, contact_id, type, description, next_steps)
-                     VALUES (?, ?, ?, ?, ?)''',
-                 (data.get('deal_id'), data.get('contact_id'), data.get('type'), 
-                  data.get('description'), data.get('next_steps')))
-        conn.commit()
-        conn.close()
+        try:
+            c = conn.cursor()
+            c.execute('''INSERT INTO activities (deal_id, contact_id, type, description, next_steps)
+                         VALUES (?, ?, ?, ?, ?)''',
+                     (data.get('deal_id'), data.get('contact_id'), data.get('type'),
+                      data.get('description'), data.get('next_steps')))
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+    try:
+        execute_with_retry(do_add)
         return jsonify({'success': True}), 201
     except Exception as e:
         print(f"Error in add_activity: {e}")
@@ -481,22 +528,28 @@ def add_activity():
 
 @app.route('/api/revenue', methods=['GET'])
 def get_revenue():
-    try:
+    def do_get():
         conn = get_db()
-        c = conn.cursor()
-        
-        realized = c.execute('SELECT SUM(value) as total FROM deals WHERE status = ?', ('closed',)).fetchone()
-        pipeline = c.execute('SELECT SUM(value) as total FROM deals WHERE status = ?', ('open',)).fetchone()
-        open_deals = c.execute('SELECT value, probability FROM deals WHERE status = ?', ('open',)).fetchall()
-        
-        forecasted = sum((deal['value'] * deal['probability'] / 100) for deal in open_deals if deal['value'] and deal['probability'])
-        
-        conn.close()
-        return jsonify({
-            'pipeline': pipeline['total'] or 0,
-            'forecasted': forecasted,
-            'realized': realized['total'] or 0
-        })
+        try:
+            c = conn.cursor()
+
+            realized = c.execute('SELECT SUM(value) as total FROM deals WHERE status = ?', ('closed',)).fetchone()
+            pipeline = c.execute('SELECT SUM(value) as total FROM deals WHERE status = ?', ('open',)).fetchone()
+            open_deals = c.execute('SELECT value, probability FROM deals WHERE status = ?', ('open',)).fetchall()
+
+            forecasted = sum((deal['value'] * deal['probability'] / 100) for deal in open_deals if deal['value'] and deal['probability'])
+
+            return {
+                'pipeline': pipeline['total'] or 0,
+                'forecasted': forecasted,
+                'realized': realized['total'] or 0
+            }
+        finally:
+            conn.close()
+
+    try:
+        revenue = execute_with_retry(do_get)
+        return jsonify(revenue)
     except Exception as e:
         print(f"Error in get_revenue: {e}")
         traceback.print_exc()
@@ -506,77 +559,82 @@ def get_revenue():
 
 @app.route('/api/pipeline/analytics', methods=['GET'])
 def get_pipeline_analytics():
-    try:
+    def do_get():
         conn = get_db()
-        c = conn.cursor()
-        
-        # Get all open deals with details
-        c.execute('''SELECT d.*, c.name as contact_name FROM deals d
-                     LEFT JOIN contacts c ON d.contact_id = c.id
-                     WHERE d.status = 'open'
-                     ORDER BY d.expected_close_date ASC, d.value DESC''')
-        deals = c.fetchall()
-        
-        # Organize by stage
-        stages = {}
-        stage_order = ['qualification', 'needs_analysis', 'proposal', 'negotiation']
-        
-        for stage in stage_order:
-            stages[stage] = {
-                'deals': [],
-                'total_value': 0,
-                'weighted_value': 0,
-                'count': 0
+        try:
+            c = conn.cursor()
+
+            # Get all open deals with details
+            c.execute('''SELECT d.*, c.name as contact_name FROM deals d
+                         LEFT JOIN contacts c ON d.contact_id = c.id
+                         WHERE d.status = 'open'
+                         ORDER BY d.expected_close_date ASC, d.value DESC''')
+            deals = c.fetchall()
+
+            # Organize by stage
+            stages = {}
+            stage_order = ['qualification', 'needs_analysis', 'proposal', 'negotiation']
+
+            for stage in stage_order:
+                stages[stage] = {
+                    'deals': [],
+                    'total_value': 0,
+                    'weighted_value': 0,
+                    'count': 0
+                }
+
+            for deal in deals:
+                deal_dict = dict(deal)
+                stage = deal['stage']
+                if stage in stages:
+                    # Get SKUs for this deal
+                    c.execute('''SELECT s.* FROM skus s
+                                 INNER JOIN deal_skus ds ON s.id = ds.sku_id
+                                 WHERE ds.deal_id = ?''', (deal['id'],))
+                    skus = c.fetchall()
+                    deal_dict['skus'] = [dict(sku) for sku in skus]
+
+                    stages[stage]['deals'].append(deal_dict)
+                    stages[stage]['total_value'] += deal['value'] or 0
+                    stages[stage]['weighted_value'] += (deal['value'] or 0) * (deal['probability'] or 0) / 100
+                    stages[stage]['count'] += 1
+
+            # Calculate totals
+            total_pipeline = sum(s['total_value'] for s in stages.values())
+            total_weighted = sum(s['weighted_value'] for s in stages.values())
+            total_deals = sum(s['count'] for s in stages.values())
+
+            # Group by expected close date (monthly)
+            monthly_forecast = {}
+            for deal in deals:
+                close_date = deal['expected_close_date'] if 'expected_close_date' in deal.keys() else None
+                if close_date:
+                    month_key = close_date[:7]  # YYYY-MM
+                else:
+                    month_key = 'No Date Set'
+
+                if month_key not in monthly_forecast:
+                    monthly_forecast[month_key] = {'total': 0, 'weighted': 0, 'count': 0}
+
+                monthly_forecast[month_key]['total'] += deal['value'] or 0
+                monthly_forecast[month_key]['weighted'] += (deal['value'] or 0) * (deal['probability'] or 0) / 100
+                monthly_forecast[month_key]['count'] += 1
+
+            return {
+                'stages': stages,
+                'monthly_forecast': monthly_forecast,
+                'totals': {
+                    'pipeline': total_pipeline,
+                    'weighted': total_weighted,
+                    'deal_count': total_deals
+                }
             }
-        
-        for deal in deals:
-            deal_dict = dict(deal)
-            stage = deal['stage']
-            if stage in stages:
-                # Get SKUs for this deal
-                c.execute('''SELECT s.* FROM skus s
-                             INNER JOIN deal_skus ds ON s.id = ds.sku_id
-                             WHERE ds.deal_id = ?''', (deal['id'],))
-                skus = c.fetchall()
-                deal_dict['skus'] = [dict(sku) for sku in skus]
-                
-                stages[stage]['deals'].append(deal_dict)
-                stages[stage]['total_value'] += deal['value'] or 0
-                stages[stage]['weighted_value'] += (deal['value'] or 0) * (deal['probability'] or 0) / 100
-                stages[stage]['count'] += 1
-        
-        # Calculate totals
-        total_pipeline = sum(s['total_value'] for s in stages.values())
-        total_weighted = sum(s['weighted_value'] for s in stages.values())
-        total_deals = sum(s['count'] for s in stages.values())
-        
-        # Group by expected close date (monthly)
-        monthly_forecast = {}
-        for deal in deals:
-            close_date = deal['expected_close_date'] if 'expected_close_date' in deal.keys() else None
-            if close_date:
-                month_key = close_date[:7]  # YYYY-MM
-            else:
-                month_key = 'No Date Set'
-            
-            if month_key not in monthly_forecast:
-                monthly_forecast[month_key] = {'total': 0, 'weighted': 0, 'count': 0}
-            
-            monthly_forecast[month_key]['total'] += deal['value'] or 0
-            monthly_forecast[month_key]['weighted'] += (deal['value'] or 0) * (deal['probability'] or 0) / 100
-            monthly_forecast[month_key]['count'] += 1
-        
-        conn.close()
-        
-        return jsonify({
-            'stages': stages,
-            'monthly_forecast': monthly_forecast,
-            'totals': {
-                'pipeline': total_pipeline,
-                'weighted': total_weighted,
-                'deal_count': total_deals
-            }
-        })
+        finally:
+            conn.close()
+
+    try:
+        analytics = execute_with_retry(do_get)
+        return jsonify(analytics)
     except Exception as e:
         print(f"Error in get_pipeline_analytics: {e}")
         traceback.print_exc()

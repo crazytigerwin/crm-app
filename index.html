@@ -530,24 +530,32 @@
 
         .funnel-stage {
             margin-bottom: 20px;
-            padding: 15px;
-            border-radius: 8px;
-            background: linear-gradient(to right, #f8f9fa, #fff);
-            border-left: 4px solid #2d7a7a;
+            padding: 20px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+            border-left: 6px solid #2d7a7a;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+        }
+
+        .funnel-stage:hover {
+            box-shadow: 0 4px 8px rgba(45, 122, 122, 0.15);
+            transform: translateY(-2px);
         }
 
         .funnel-stage-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 10px;
+            margin-bottom: 15px;
         }
 
         .funnel-stage-name {
-            font-weight: 600;
-            font-size: 14px;
-            color: #333;
-            text-transform: capitalize;
+            font-weight: 700;
+            font-size: 15px;
+            color: #2d7a7a;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .funnel-stage-stats {
@@ -555,7 +563,7 @@
         }
 
         .funnel-stage-value {
-            font-size: 18px;
+            font-size: 22px;
             font-weight: bold;
             color: #2d7a7a;
         }
@@ -563,19 +571,55 @@
         .funnel-stage-weighted {
             font-size: 11px;
             color: #666;
+            margin-top: 2px;
+        }
+
+        .funnel-stage-conversion {
+            font-size: 10px;
+            color: #e07856;
+            font-weight: 600;
+            margin-top: 2px;
         }
 
         .funnel-bar {
-            height: 8px;
+            height: 12px;
             background: #e5e7eb;
-            border-radius: 4px;
+            border-radius: 6px;
             overflow: hidden;
+            position: relative;
         }
 
         .funnel-bar-fill {
             height: 100%;
-            background: linear-gradient(to right, #2d7a7a, #4a9999);
-            border-radius: 4px;
+            background: linear-gradient(90deg, #2d7a7a 0%, #4a9999 100%);
+            border-radius: 6px;
+            transition: width 0.5s ease;
+        }
+
+        .funnel-stage-metrics {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .funnel-metric {
+            text-align: center;
+        }
+
+        .funnel-metric-label {
+            font-size: 10px;
+            color: #999;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .funnel-metric-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
         }
 
         .pipeline-forecast {
@@ -619,41 +663,98 @@
         }
 
         .pipeline-deal-card {
-            padding: 15px;
-            border: 1px solid #eee;
-            border-radius: 8px;
+            padding: 18px;
+            border: 2px solid #eee;
+            border-radius: 10px;
             margin-bottom: 15px;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.3s ease;
+            background: white;
         }
 
         .pipeline-deal-card:hover {
             border-color: #2d7a7a;
-            box-shadow: 0 2px 8px rgba(45, 122, 122, 0.15);
+            box-shadow: 0 4px 12px rgba(45, 122, 122, 0.2);
+            transform: translateX(4px);
         }
 
         .pipeline-deal-header {
             display: flex;
             justify-content: space-between;
             align-items: start;
-            margin-bottom: 10px;
+            margin-bottom: 12px;
         }
 
         .pipeline-deal-name {
-            font-weight: 600;
+            font-weight: 700;
+            font-size: 16px;
             color: #2d7a7a;
+            flex: 1;
         }
 
         .pipeline-deal-value {
             font-weight: bold;
+            font-size: 18px;
             color: #333;
+            margin-left: 15px;
         }
 
         .pipeline-deal-meta {
             display: flex;
-            gap: 15px;
+            flex-wrap: wrap;
+            gap: 12px;
             font-size: 12px;
             color: #666;
+            margin-bottom: 10px;
+        }
+
+        .pipeline-deal-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .pipeline-deal-weighted {
+            font-size: 11px;
+            color: #e07856;
+            font-weight: 600;
+            margin-top: 8px;
+            padding: 6px 10px;
+            background: #fff8e1;
+            border-radius: 4px;
+            display: inline-block;
+        }
+
+        .pipeline-filters {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        .filter-row {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .filter-group {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .filter-group label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .filter-group select {
+            width: 100%;
         }
 
         .pipeline-totals {
@@ -997,7 +1098,7 @@
         <!-- PIPELINE TAB -->
         <div id="pipeline" class="tab-content">
             <h2 style="margin-bottom: 20px; color: #333;">Pipeline Overview</h2>
-            
+
             <div class="pipeline-totals" id="pipelineTotals">
                 <div class="pipeline-total-card">
                     <div class="pipeline-total-label">Total Pipeline</div>
@@ -1012,7 +1113,7 @@
                     <div class="pipeline-total-value" id="pipelineDealCount">0</div>
                 </div>
             </div>
-            
+
             <div class="pipeline-container">
                 <div class="pipeline-funnel">
                     <h3 style="margin-bottom: 20px; color: #2d7a7a;">Pipeline by Stage</h3>
@@ -1023,9 +1124,47 @@
                     <div id="monthlyForecast"></div>
                 </div>
             </div>
-            
+
             <div class="pipeline-deals-list">
                 <h3 style="margin-bottom: 20px; color: #2d7a7a;">All Open Opportunities</h3>
+
+                <!-- Filters -->
+                <div class="pipeline-filters">
+                    <div class="filter-row">
+                        <div class="filter-group">
+                            <label>Filter by Stage</label>
+                            <select id="pipelineStageFilter" onchange="filterPipelineDeals()">
+                                <option value="">All Stages</option>
+                                <option value="qualification">Qualification</option>
+                                <option value="needs_analysis">Needs Analysis</option>
+                                <option value="proposal">Proposal/Quote</option>
+                                <option value="negotiation">Negotiation</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>Sort By</label>
+                            <select id="pipelineSortFilter" onchange="filterPipelineDeals()">
+                                <option value="value_desc">Value (High to Low)</option>
+                                <option value="value_asc">Value (Low to High)</option>
+                                <option value="probability_desc">Probability (High to Low)</option>
+                                <option value="probability_asc">Probability (Low to High)</option>
+                                <option value="date_asc">Close Date (Earliest First)</option>
+                                <option value="date_desc">Close Date (Latest First)</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>Minimum Value</label>
+                            <select id="pipelineValueFilter" onchange="filterPipelineDeals()">
+                                <option value="0">All Values</option>
+                                <option value="10000">$10,000+</option>
+                                <option value="25000">$25,000+</option>
+                                <option value="50000">$50,000+</option>
+                                <option value="100000">$100,000+</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
                 <div id="pipelineDeals"></div>
             </div>
         </div>
@@ -1472,6 +1611,7 @@
 
         function closeContactModal() {
             document.getElementById('contactModal').classList.remove('active');
+            currentEditingContactId = null; // Reset editing state
             if (document.getElementById('oppModal').classList.contains('active')) {
                 document.getElementById('oppModal').style.pointerEvents = 'auto';
             }
@@ -1489,10 +1629,15 @@
                 additional_info: document.getElementById('contactInfo').value
             };
 
-            const url = currentEditingContactId 
+            if (!contactData.name) {
+                alert('Please enter a contact name');
+                return;
+            }
+
+            const url = currentEditingContactId
                 ? `${API_URL}/contacts/${currentEditingContactId}`
                 : `${API_URL}/contacts`;
-            
+
             const method = currentEditingContactId ? 'PUT' : 'POST';
 
             fetch(url, {
@@ -1500,9 +1645,19 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(contactData)
             })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(() => {
                 closeContactModal();
                 loadContacts();
+            })
+            .catch(err => {
+                console.error('Error saving contact:', err);
+                alert('Error saving contact. Please try again.');
             });
         }
 
@@ -1681,9 +1836,24 @@
 
         function closeOppModal() {
             document.getElementById('oppModal').classList.remove('active');
+            currentEditingOppId = null; // Reset editing state
         }
 
         function saveOpportunity() {
+            // Validation
+            const name = document.getElementById('oppName').value;
+            const stage = document.getElementById('oppStage').value;
+
+            if (!name) {
+                alert('Please enter an opportunity name');
+                return;
+            }
+
+            if (!stage) {
+                alert('Please select a stage');
+                return;
+            }
+
             const selectedSkus = [];
             document.querySelectorAll('input[type="checkbox"][class*="sku"]:checked').forEach(cb => {
                 if (cb.dataset.sku) {
@@ -1692,11 +1862,11 @@
             });
 
             const oppData = {
-                name: document.getElementById('oppName').value,
+                name: name,
                 contact_id: document.getElementById('oppContact').value || null,
                 value: parseFloat(document.getElementById('oppAmount').value) || 0,
                 probability: parseInt(document.getElementById('oppProbability').value) || 0,
-                stage: document.getElementById('oppStage').value,
+                stage: stage,
                 status: document.getElementById('oppStatus').value,
                 expected_close_date: document.getElementById('oppCloseDate').value || null,
                 lead_source: document.getElementById('oppLeadSource').value,
@@ -1710,10 +1880,10 @@
             console.log('Saving opportunity:', oppData);
             console.log('currentEditingOppId:', currentEditingOppId);
 
-            const url = currentEditingOppId 
+            const url = currentEditingOppId
                 ? `${API_URL}/deals/${currentEditingOppId}`
                 : `${API_URL}/deals`;
-            
+
             const method = currentEditingOppId ? 'PUT' : 'POST';
 
             fetch(url, {
@@ -1788,6 +1958,10 @@
 
         function closeActivityModal() {
             document.getElementById('activityModal').classList.remove('active');
+            // Refresh activity list if we're on the activity tab
+            if (document.getElementById('activities').classList.contains('active')) {
+                loadActivities();
+            }
         }
 
         function saveActivity() {
@@ -1803,47 +1977,91 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(activityData)
             })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(() => {
                 closeActivityModal();
                 loadActivities();
+                // If in opportunity detail modal, refresh it too
+                if (document.getElementById('oppDetailModal').classList.contains('active')) {
+                    const oppId = document.getElementById('oppDetailModal').currentOppId;
+                    if (oppId) {
+                        openOppModal(oppId);
+                    }
+                }
+            })
+            .catch(err => {
+                console.error('Error saving activity:', err);
+                alert('Error saving activity. Please try again.');
             });
         }
 
         // METRICS & CHARTS - Old functions removed, using updateDashboardWithDeals() instead
+
+        // Store pipeline data globally for filtering
+        let pipelineData = null;
 
         // PIPELINE ANALYTICS
         function loadPipelineAnalytics() {
             fetch(`${API_URL}/pipeline/analytics`)
                 .then(r => r.json())
                 .then(data => {
+                    pipelineData = data; // Store for filtering
+
                     // Update totals
                     document.getElementById('pipelineTotalValue').textContent = formatCurrency(data.totals.pipeline);
                     document.getElementById('pipelineWeightedValue').textContent = formatCurrency(data.totals.weighted);
                     document.getElementById('pipelineDealCount').textContent = data.totals.deal_count;
 
-                    // Render funnel by stage
+                    // Render funnel by stage with enhanced metrics
                     const stageOrder = ['qualification', 'needs_analysis', 'proposal', 'negotiation'];
                     const maxValue = Math.max(...stageOrder.map(s => data.stages[s]?.total_value || 0), 1);
-                    
-                    const funnelHtml = stageOrder.map(stage => {
+
+                    // Calculate conversion rates (simplified - % of total deals in each stage)
+                    const totalDeals = data.totals.deal_count;
+
+                    const funnelHtml = stageOrder.map((stage, index) => {
                         const stageData = data.stages[stage] || { total_value: 0, weighted_value: 0, count: 0 };
                         const width = (stageData.total_value / maxValue) * 100;
+                        const avgDealSize = stageData.count > 0 ? stageData.total_value / stageData.count : 0;
+                        const avgProbability = stageData.count > 0 ? stageData.weighted_value / stageData.total_value * 100 : 0;
+                        const stagePercent = totalDeals > 0 ? (stageData.count / totalDeals * 100).toFixed(0) : 0;
+
                         return `
                             <div class="funnel-stage">
                                 <div class="funnel-stage-header">
                                     <span class="funnel-stage-name">${formatStageName(stage)}</span>
                                     <div class="funnel-stage-stats">
                                         <div class="funnel-stage-value">${formatCurrency(stageData.total_value)}</div>
-                                        <div class="funnel-stage-weighted">${stageData.count} deals | Weighted: ${formatCurrency(stageData.weighted_value)}</div>
+                                        <div class="funnel-stage-weighted">${stageData.count} deals (${stagePercent}%) | Weighted: ${formatCurrency(stageData.weighted_value)}</div>
+                                        <div class="funnel-stage-conversion">Win Probability: ${avgProbability.toFixed(0)}%</div>
                                     </div>
                                 </div>
                                 <div class="funnel-bar">
                                     <div class="funnel-bar-fill" style="width: ${width}%;"></div>
                                 </div>
+                                <div class="funnel-stage-metrics">
+                                    <div class="funnel-metric">
+                                        <div class="funnel-metric-label">Deals</div>
+                                        <div class="funnel-metric-value">${stageData.count}</div>
+                                    </div>
+                                    <div class="funnel-metric">
+                                        <div class="funnel-metric-label">Avg Size</div>
+                                        <div class="funnel-metric-value">${formatCurrency(avgDealSize)}</div>
+                                    </div>
+                                    <div class="funnel-metric">
+                                        <div class="funnel-metric-label">Avg Prob</div>
+                                        <div class="funnel-metric-value">${avgProbability.toFixed(0)}%</div>
+                                    </div>
+                                </div>
                             </div>
                         `;
                     }).join('');
-                    
+
                     document.getElementById('pipelineFunnel').innerHTML = funnelHtml || '<div class="empty-state">No open opportunities</div>';
 
                     // Render monthly forecast
@@ -1862,44 +2080,96 @@
                             </div>
                         `;
                     }).join('');
-                    
+
                     document.getElementById('monthlyForecast').innerHTML = monthlyHtml || '<div class="empty-state">No expected close dates set</div>';
 
-                    // Render deal cards
-                    const allDeals = [];
-                    stageOrder.forEach(stage => {
-                        if (data.stages[stage]) {
-                            allDeals.push(...data.stages[stage].deals);
-                        }
-                    });
-                    
-                    const dealsHtml = allDeals.map(deal => `
-                        <div class="pipeline-deal-card" onclick="openOppModal(${deal.id})">
-                            <div class="pipeline-deal-header">
-                                <span class="pipeline-deal-name">${deal.name}</span>
-                                <span class="pipeline-deal-value">${formatCurrency(deal.value)}</span>
-                            </div>
-                            <div class="pipeline-deal-meta">
-                                <span>📊 ${formatStageName(deal.stage)}</span>
-                                <span>🎯 ${deal.probability}%</span>
-                                <span>📅 ${formatDate(deal.expected_close_date)}</span>
-                                ${deal.contact_name ? `<span>👤 ${deal.contact_name}</span>` : ''}
-                            </div>
-                            ${deal.skus.length > 0 ? `
-                                <div style="margin-top: 10px;">
-                                    ${deal.skus.map(s => `<span class="sku-tag">${formatSkuDisplay(s)}</span>`).join('')}
-                                </div>
-                            ` : ''}
-                        </div>
-                    `).join('');
-                    
-                    document.getElementById('pipelineDeals').innerHTML = dealsHtml || '<div class="empty-state">No open opportunities</div>';
+                    // Initial render of deals
+                    filterPipelineDeals();
                 })
                 .catch(err => {
                     console.error('Error loading pipeline analytics:', err);
-                    // Fallback to basic pipeline view
-                    loadDashboardPipeline();
                 });
+        }
+
+        function filterPipelineDeals() {
+            if (!pipelineData) return;
+
+            const stageFilter = document.getElementById('pipelineStageFilter').value;
+            const sortFilter = document.getElementById('pipelineSortFilter').value;
+            const valueFilter = parseFloat(document.getElementById('pipelineValueFilter').value);
+
+            // Collect all deals
+            const stageOrder = ['qualification', 'needs_analysis', 'proposal', 'negotiation'];
+            let allDeals = [];
+            stageOrder.forEach(stage => {
+                if (pipelineData.stages[stage]) {
+                    allDeals.push(...pipelineData.stages[stage].deals);
+                }
+            });
+
+            // Apply filters
+            let filteredDeals = allDeals.filter(deal => {
+                // Stage filter
+                if (stageFilter && deal.stage !== stageFilter) return false;
+
+                // Value filter
+                if (valueFilter > 0 && (deal.value || 0) < valueFilter) return false;
+
+                return true;
+            });
+
+            // Apply sorting
+            filteredDeals.sort((a, b) => {
+                switch(sortFilter) {
+                    case 'value_desc':
+                        return (b.value || 0) - (a.value || 0);
+                    case 'value_asc':
+                        return (a.value || 0) - (b.value || 0);
+                    case 'probability_desc':
+                        return (b.probability || 0) - (a.probability || 0);
+                    case 'probability_asc':
+                        return (a.probability || 0) - (b.probability || 0);
+                    case 'date_asc':
+                        if (!a.expected_close_date) return 1;
+                        if (!b.expected_close_date) return -1;
+                        return a.expected_close_date.localeCompare(b.expected_close_date);
+                    case 'date_desc':
+                        if (!a.expected_close_date) return 1;
+                        if (!b.expected_close_date) return -1;
+                        return b.expected_close_date.localeCompare(a.expected_close_date);
+                    default:
+                        return (b.value || 0) - (a.value || 0);
+                }
+            });
+
+            // Render deal cards with enhanced details
+            const dealsHtml = filteredDeals.map(deal => {
+                const weightedValue = (deal.value || 0) * (deal.probability || 0) / 100;
+                return `
+                    <div class="pipeline-deal-card" onclick="openOppModal(${deal.id})">
+                        <div class="pipeline-deal-header">
+                            <span class="pipeline-deal-name">${deal.name}</span>
+                            <span class="pipeline-deal-value">${formatCurrency(deal.value)}</span>
+                        </div>
+                        <div class="pipeline-deal-meta">
+                            <span class="pipeline-deal-meta-item">📊 ${formatStageName(deal.stage)}</span>
+                            <span class="pipeline-deal-meta-item">🎯 <span class="${getProbabilityColor(deal.probability)}">${deal.probability || 0}%</span></span>
+                            <span class="pipeline-deal-meta-item">📅 ${formatDate(deal.expected_close_date)}</span>
+                            ${deal.contact_name ? `<span class="pipeline-deal-meta-item">👤 ${deal.contact_name}</span>` : ''}
+                        </div>
+                        ${deal.skus && deal.skus.length > 0 ? `
+                            <div style="margin-top: 10px;">
+                                ${deal.skus.map(s => `<span class="sku-tag">${formatSkuDisplay(s)}</span>`).join('')}
+                            </div>
+                        ` : ''}
+                        <div class="pipeline-deal-weighted">
+                            Weighted Value: ${formatCurrency(weightedValue)}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            document.getElementById('pipelineDeals').innerHTML = dealsHtml || '<div class="empty-state">No opportunities match your filters</div>';
         }
     </script>
 </body>
