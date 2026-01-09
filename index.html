@@ -1143,15 +1143,190 @@
         const API_URL = window.location.origin + '/api';
         let currentEditingOppId = null;
         let currentEditingContactId = null;
+        
+        // Cache for deals data to avoid multiple API calls
+        let cachedDeals = null;
+        let dealsLastFetched = 0;
+        const CACHE_DURATION = 5000; // 5 seconds
 
-        // Initialize
-        document.addEventListener('DOMContentLoaded', () => {
+        // Initialize - load data sequentially to avoid database locks
+        document.addEventListener('DOMContentLoaded', async () => {
             setActivityDateToToday();
-            loadContacts();
-            loadOpportunities();
-            loadActivities();
-            loadMetrics();
+            await loadAllData();
         });
+        
+        async function loadAllData() {
+            try {
+                // Load contacts first
+                await loadContacts();
+                // Then load deals (this caches the data)
+                await loadDealsData();
+                // Then activities
+                await loadActivities();
+                // Then update UI with cached deals
+                updateDashboardWithDeals();
+                updateOpportunitiesTable();
+            } catch (err) {
+                console.error('Error loading data:', err);
+            }
+        }
+        
+        async function loadDealsData(forceRefresh = false) {
+            const now = Date.now();
+            if (!forceRefresh && cachedDeals && (now - dealsLastFetched) < CACHE_DURATION) {
+                return cachedDeals; // Return cached data
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/deals`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                cachedDeals = await response.json();
+                dealsLastFetched = now;
+                console.log('Deals loaded:', cachedDeals);
+                return cachedDeals;
+            } catch (err) {
+                console.error('Error fetching deals:', err);
+                return cachedDeals || []; // Return cached or empty array
+            }
+        }
+        
+        function updateDashboardWithDeals() {
+            if (!cachedDeals) return;
+            
+            const deals = cachedDeals;
+            const openDeals = deals.filter(d => d.status === 'open');
+            const closedDeals = deals.filter(d => d.status === 'closed');
+            
+            // Update metrics
+            const pipeline = openDeals.reduce((sum, d) => sum + (d.value || 0), 0);
+            const realized = closedDeals.reduce((sum, d) => sum + (d.value || 0), 0);
+            const forecasted = openDeals.reduce((sum, d) => sum + ((d.value || 0) * (d.probability || 0) / 100), 0);
+            
+            document.getElementById('closedThisQuarter').textContent = formatCurrency(realized);
+            document.getElementById('myPipeline').textContent = formatCurrency(pipeline);
+            document.getElementById('myForecast').textContent = formatCurrency(forecasted);
+            document.getElementById('totalRevenue').textContent = formatCurrency(realized);
+            
+            // Update pipeline by stage
+            const stages = {};
+            const stageOrder = ['qualification', 'needs_analysis', 'proposal', 'negotiation'];
+            stageOrder.forEach(stage => {
+                stages[stage] = { count: 0, value: 0 };
+            });
+            openDeals.forEach(d => {
+                if (stages[d.stage]) {
+                    stages[d.stage].count++;
+                    stages[d.stage].value += d.value || 0;
+                }
+            });
+            const maxValue = Math.max(...Object.values(stages).map(s => s.value), 1);
+            const pipelineHtml = stageOrder.map(stage => {
+                const data = stages[stage];
+                const width = (data.value / maxValue) * 100;
+                return `
+                    <div style="margin-bottom: 15px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                            <span style="font-weight: 600; color: #333;">${formatStageName(stage)}</span>
+                            <span style="color: #666; font-size: 12px;">${data.count} deals | ${formatCurrency(data.value)}</span>
+                        </div>
+                        <div style="background: #e5e7eb; height: 8px; border-radius: 4px; overflow: hidden;">
+                            <div style="background: linear-gradient(to right, #2d7a7a, #4a9999); height: 100%; width: ${width}%;"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            document.getElementById('pipelineByStage').innerHTML = pipelineHtml || '<div class="empty-state">No open opportunities</div>';
+            
+            // Update forecast summary
+            document.getElementById('forecastSummary').innerHTML = `
+                <div style="display: flex; justify-content: space-between; margin-bottom: 10px; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+                    <span>Open Pipeline:</span>
+                    <strong>${formatCurrency(pipeline)}</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 10px; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+                    <span>Weighted Forecast:</span>
+                    <strong>${formatCurrency(forecasted)}</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 10px; background: #d4edda; border-radius: 4px;">
+                    <span>Closed Revenue:</span>
+                    <strong>${formatCurrency(realized)}</strong>
+                </div>
+            `;
+            
+            // Update forecast chart (safely)
+            const ctx = document.getElementById('forecastChart');
+            if (ctx) {
+                // Safely destroy existing chart
+                if (window.forecastChart && typeof window.forecastChart.destroy === 'function') {
+                    window.forecastChart.destroy();
+                    window.forecastChart = null;
+                }
+                
+                if (pipeline > 0 || realized > 0) {
+                    window.forecastChart = new Chart(ctx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: ['Open Pipeline', 'Closed Revenue'],
+                            datasets: [{
+                                data: [pipeline, realized],
+                                backgroundColor: ['#2d7a7a', '#1b6e0b']
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: { 
+                                legend: { position: 'bottom' }
+                            }
+                        }
+                    });
+                }
+            }
+            
+            // Update Top 10 opportunities
+            updateTopOpportunities();
+        }
+        
+        function updateTopOpportunities() {
+            if (!cachedDeals) return;
+            const sortedDeals = [...cachedDeals].sort((a, b) => (b.value || 0) - (a.value || 0));
+            const topOppsTable = document.getElementById('topOppsTable');
+            
+            topOppsTable.innerHTML = sortedDeals.slice(0, 10).map(d => `
+                <tr class="clickable-row" onclick="openOppModal(${d.id})">
+                    <td><span class="opp-link">${d.name || '(No Name)'}</span></td>
+                    <td>${formatStageName(d.stage)}</td>
+                    <td>${formatCurrency(d.value)}</td>
+                    <td><span class="${getProbabilityColor(d.probability)}">${d.probability || 0}%</span></td>
+                    <td>${formatDate(d.expected_close_date)}</td>
+                    <td style="font-size: 11px;">${(d.skus || []).map(s => formatSkuDisplay(s)).join(', ')}</td>
+                </tr>
+            `).join('') || '<tr><td colspan="6" class="empty-state">No opportunities yet</td></tr>';
+        }
+        
+        function updateOpportunitiesTable() {
+            if (!cachedDeals) return;
+            const table = document.getElementById('oppsTable');
+            
+            table.innerHTML = cachedDeals.map(d => `
+                <tr>
+                    <td><span class="opp-link" onclick="openOppModal(${d.id})">${d.name || '(No Name)'}</span></td>
+                    <td>${d.contact_name || ''}</td>
+                    <td>${formatStageName(d.stage)}</td>
+                    <td>${formatCurrency(d.value)}</td>
+                    <td><span class="${getProbabilityColor(d.probability)}">${d.probability || 0}%</span></td>
+                    <td>${formatDate(d.expected_close_date)}</td>
+                    <td>${(d.skus || []).map(s => `<div style="font-size: 11px;">${formatSkuDisplay(s)}</div>`).join('')}</td>
+                    <td><button onclick="deleteOpportunity(${d.id})">Delete</button></td>
+                </tr>
+            `).join('') || '<tr><td colspan="8" class="empty-state">No opportunities yet</td></tr>';
+        }
+        
+        // Refresh all data (used after saves)
+        async function refreshData() {
+            await loadDealsData(true); // Force refresh
+            updateDashboardWithDeals();
+            updateOpportunitiesTable();
+        }
 
         // Utility Functions
         function formatCurrency(val) {
@@ -1217,7 +1392,7 @@
             event.target.classList.add('active');
 
             if (tabName === 'dashboard') {
-                loadMetrics();
+                updateDashboardWithDeals(); // Use cached data
             } else if (tabName === 'pipeline') {
                 loadPipelineAnalytics();
             }
@@ -1234,7 +1409,7 @@
 
         // CONTACTS
         function loadContacts() {
-            fetch(`${API_URL}/contacts`)
+            return fetch(`${API_URL}/contacts`)
                 .then(r => r.json())
                 .then(contacts => {
                     const contactsList = document.getElementById('contactsList');
@@ -1257,7 +1432,8 @@
                         option.text = c.name;
                         contactSelect.appendChild(option);
                     });
-                });
+                })
+                .catch(err => console.error('Error loading contacts:', err));
         }
 
         function openAddContactModal() {
@@ -1330,45 +1506,7 @@
             });
         }
 
-        // OPPORTUNITIES
-        function loadOpportunities() {
-            fetch(`${API_URL}/deals`)
-                .then(r => r.json())
-                .then(deals => {
-                    const table = document.getElementById('oppsTable');
-                    const topOppsTable = document.getElementById('topOppsTable');
-                    
-                    // Sort by value for top opps
-                    const sortedDeals = [...deals].sort((a, b) => (b.value || 0) - (a.value || 0));
-                    
-                    const tableHTML = deals.map(d => `
-                        <tr>
-                            <td><span class="opp-link" onclick="openOppModal(${d.id})">${d.name}</span></td>
-                            <td>${d.contact_name || ''}</td>
-                            <td>${formatStageName(d.stage)}</td>
-                            <td>${formatCurrency(d.value)}</td>
-                            <td><span class="${getProbabilityColor(d.probability)}">${d.probability}%</span></td>
-                            <td>${formatDate(d.expected_close_date)}</td>
-                            <td>${d.skus.map(s => `<div style="font-size: 11px;">${formatSkuDisplay(s)}</div>`).join('')}</td>
-                            <td><button onclick="deleteOpportunity(${d.id})">Delete</button></td>
-                        </tr>
-                    `).join('');
-                    
-                    table.innerHTML = tableHTML || '<tr><td colspan="8" class="empty-state">No opportunities yet</td></tr>';
-                    
-                    // Top 10 opportunities - make entire row clickable
-                    topOppsTable.innerHTML = sortedDeals.slice(0, 10).map(d => `
-                        <tr class="clickable-row" onclick="openOppModal(${d.id})">
-                            <td><span class="opp-link">${d.name}</span></td>
-                            <td>${formatStageName(d.stage)}</td>
-                            <td>${formatCurrency(d.value)}</td>
-                            <td><span class="${getProbabilityColor(d.probability)}">${d.probability}%</span></td>
-                            <td>${formatDate(d.expected_close_date)}</td>
-                            <td style="font-size: 11px;">${d.skus.map(s => formatSkuDisplay(s)).join(', ')}</td>
-                        </tr>
-                    `).join('') || '<tr><td colspan="6" class="empty-state">No opportunities yet</td></tr>';
-                });
-        }
+        // OPPORTUNITIES - Old function removed, using updateOpportunitiesTable() instead
 
         function openAddOppModal() {
             currentEditingOppId = null;
@@ -1404,7 +1542,7 @@
         }
 
         function openOppDetailModal(opp) {
-            const skuNames = opp.skus.map(s => `<span class="sku-tag">${formatSkuDisplay(s)}</span>`).join('');
+            const skuNames = (opp.skus || []).map(s => `<span class="sku-tag">${formatSkuDisplay(s)}</span>`).join('');
             
             const html = `
                 <div class="detail-item">
@@ -1421,7 +1559,7 @@
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Probability</div>
-                    <div class="detail-value"><span class="${getProbabilityColor(opp.probability)}">${opp.probability}%</span></div>
+                    <div class="detail-value"><span class="${getProbabilityColor(opp.probability)}">${opp.probability || 0}%</span></div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Expected Close Date</div>
@@ -1457,7 +1595,7 @@
                 <div id="oppActivitiesList"></div>
             `;
             
-            document.getElementById('oppDetailTitle').textContent = opp.name;
+            document.getElementById('oppDetailTitle').textContent = opp.name || '(No Name)';
             document.getElementById('oppDetailContent').innerHTML = html;
             document.getElementById('oppDetailModal').currentOppId = opp.id;
             
@@ -1569,6 +1707,9 @@
                 sku_ids: selectedSkus
             };
 
+            console.log('Saving opportunity:', oppData);
+            console.log('currentEditingOppId:', currentEditingOppId);
+
             const url = currentEditingOppId 
                 ? `${API_URL}/deals/${currentEditingOppId}`
                 : `${API_URL}/deals`;
@@ -1580,10 +1721,21 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(oppData)
             })
-            .then(() => {
+            .then(response => {
+                console.log('Save response status:', response.status);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Save successful:', data);
                 closeOppModal();
-                loadOpportunities();
-                loadMetrics();
+                refreshData(); // Use single refresh instead of multiple calls
+            })
+            .catch(err => {
+                console.error('Error saving opportunity:', err);
+                alert('Error saving opportunity. Check console for details.');
             });
         }
 
@@ -1591,15 +1743,14 @@
             if (confirm('Delete this opportunity?')) {
                 fetch(`${API_URL}/deals/${oppId}`, { method: 'DELETE' })
                     .then(() => {
-                        loadOpportunities();
-                        loadMetrics();
+                        refreshData(); // Use single refresh instead of multiple calls
                     });
             }
         }
 
         // ACTIVITIES
         function loadActivities() {
-            fetch(`${API_URL}/activities`)
+            return fetch(`${API_URL}/activities`)
                 .then(r => r.json())
                 .then(activities => {
                     const list = document.getElementById('activitiesList');
@@ -1616,16 +1767,14 @@
                             ` : ''}
                         </div>
                     `).join('') || '<div class="empty-state">No activities yet</div>';
-                });
-
-            // Populate deal dropdown
-            fetch(`${API_URL}/deals`)
-                .then(r => r.json())
-                .then(deals => {
+                    
+                    // Populate deal dropdown using cached deals
+                    const deals = cachedDeals || [];
                     const select = document.getElementById('activityDeal');
                     select.innerHTML = '<option value="">Select Opportunity</option>' +
-                        deals.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
-                });
+                        deals.map(d => `<option value="${d.id}">${d.name || '(No Name)'}</option>`).join('');
+                })
+                .catch(err => console.error('Error loading activities:', err));
         }
 
         function openAddActivityModal() {
@@ -1660,111 +1809,7 @@
             });
         }
 
-        // METRICS & CHARTS
-        function loadMetrics() {
-            fetch(`${API_URL}/revenue`)
-                .then(r => r.json())
-                .then(data => {
-                    document.getElementById('closedThisQuarter').textContent = formatCurrency(data.realized);
-                    document.getElementById('myPipeline').textContent = formatCurrency(data.pipeline);
-                    document.getElementById('myForecast').textContent = formatCurrency(data.forecasted);
-                    document.getElementById('totalRevenue').textContent = formatCurrency(data.realized);
-                });
-
-            loadDashboardPipeline();
-            loadForecastChart();
-        }
-
-        function loadDashboardPipeline() {
-            fetch(`${API_URL}/deals`)
-                .then(r => r.json())
-                .then(deals => {
-                    const stages = {};
-                    const stageOrder = ['qualification', 'needs_analysis', 'proposal', 'negotiation'];
-                    
-                    stageOrder.forEach(stage => {
-                        stages[stage] = { count: 0, value: 0 };
-                    });
-                    
-                    deals.filter(d => d.status === 'open').forEach(d => {
-                        if (stages[d.stage]) {
-                            stages[d.stage].count++;
-                            stages[d.stage].value += d.value || 0;
-                        }
-                    });
-
-                    const maxValue = Math.max(...Object.values(stages).map(s => s.value), 1);
-
-                    const html = stageOrder.map(stage => {
-                        const data = stages[stage];
-                        const width = (data.value / maxValue) * 100;
-                        return `
-                            <div style="margin-bottom: 15px;">
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                                    <span style="font-weight: 600; color: #333;">${formatStageName(stage)}</span>
-                                    <span style="color: #666; font-size: 12px;">${data.count} deals | ${formatCurrency(data.value)}</span>
-                                </div>
-                                <div style="background: #e5e7eb; height: 8px; border-radius: 4px; overflow: hidden;">
-                                    <div style="background: linear-gradient(to right, #2d7a7a, #4a9999); height: 100%; width: ${width}%;"></div>
-                                </div>
-                            </div>
-                        `;
-                    }).join('');
-
-                    document.getElementById('pipelineByStage').innerHTML = html || '<div class="empty-state">No open opportunities</div>';
-                });
-        }
-
-        function loadForecastChart() {
-            fetch(`${API_URL}/deals`)
-                .then(r => r.json())
-                .then(deals => {
-                    const openDeals = deals.filter(d => d.status === 'open');
-                    const closedDeals = deals.filter(d => d.status === 'closed');
-                    
-                    const openTotal = openDeals.reduce((sum, d) => sum + (d.value || 0), 0);
-                    const closedTotal = closedDeals.reduce((sum, d) => sum + (d.value || 0), 0);
-                    const weightedForecast = openDeals.reduce((sum, d) => sum + ((d.value || 0) * (d.probability || 0) / 100), 0);
-
-                    // Update forecast summary
-                    document.getElementById('forecastSummary').innerHTML = `
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px; padding: 10px; background: #f8f9fa; border-radius: 4px;">
-                            <span>Open Pipeline:</span>
-                            <strong>${formatCurrency(openTotal)}</strong>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px; padding: 10px; background: #f8f9fa; border-radius: 4px;">
-                            <span>Weighted Forecast:</span>
-                            <strong>${formatCurrency(weightedForecast)}</strong>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; padding: 10px; background: #d4edda; border-radius: 4px;">
-                            <span>Closed Revenue:</span>
-                            <strong>${formatCurrency(closedTotal)}</strong>
-                        </div>
-                    `;
-
-                    const ctx = document.getElementById('forecastChart');
-                    if (window.forecastChart) window.forecastChart.destroy();
-                    
-                    if (openTotal > 0 || closedTotal > 0) {
-                        window.forecastChart = new Chart(ctx, {
-                            type: 'doughnut',
-                            data: {
-                                labels: ['Open Pipeline', 'Closed Revenue'],
-                                datasets: [{
-                                    data: [openTotal, closedTotal],
-                                    backgroundColor: ['#2d7a7a', '#1b6e0b']
-                                }]
-                            },
-                            options: {
-                                responsive: true,
-                                plugins: { 
-                                    legend: { position: 'bottom' }
-                                }
-                            }
-                        });
-                    }
-                });
-        }
+        // METRICS & CHARTS - Old functions removed, using updateDashboardWithDeals() instead
 
         // PIPELINE ANALYTICS
         function loadPipelineAnalytics() {
