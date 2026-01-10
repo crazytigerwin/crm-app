@@ -1,29 +1,57 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-import sqlite3
 import json
 import time
 from datetime import datetime
 import traceback
+import os
 
 app = Flask(__name__)
 CORS(app)
 
-DATABASE = 'crm.db'
+# Database configuration - use PostgreSQL if DATABASE_URL exists, otherwise SQLite
+DATABASE_URL = os.environ.get('DATABASE_URL')
+USE_POSTGRES = DATABASE_URL is not None
+
+if USE_POSTGRES:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    # Fix for Render's postgres:// URL (should be postgresql://)
+    if DATABASE_URL.startswith('postgres://'):
+        DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+    print(f"Using PostgreSQL database")
+else:
+    import sqlite3
+    DATABASE = 'crm.db'
+    print(f"Using SQLite database: {DATABASE}")
 
 def get_db():
-    conn = sqlite3.connect(DATABASE, timeout=60)  # Wait up to 60 seconds if locked
-    conn.row_factory = sqlite3.Row
-    return conn
+    if USE_POSTGRES:
+        conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+        return conn
+    else:
+        conn = sqlite3.connect(DATABASE, timeout=60)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+def convert_query(query):
+    """Convert SQLite ? placeholders to PostgreSQL %s if needed"""
+    if USE_POSTGRES:
+        return query.replace('?', '%s')
+    return query
 
 def execute_with_retry(func, max_retries=5):
     """Execute a database function with retry logic for locked database"""
     for attempt in range(max_retries):
         try:
             return func()
-        except sqlite3.OperationalError as e:
-            if "locked" in str(e) and attempt < max_retries - 1:
-                print(f"Database locked, retrying in {attempt + 1} seconds...")
+        except Exception as e:
+            # Handle both SQLite and PostgreSQL errors
+            error_str = str(e).lower()
+            is_retryable = "locked" in error_str or "deadlock" in error_str
+
+            if is_retryable and attempt < max_retries - 1:
+                print(f"Database locked/busy, retrying in {attempt + 1} seconds...")
                 time.sleep(attempt + 1)  # Exponential backoff
             else:
                 raise
@@ -31,14 +59,24 @@ def execute_with_retry(func, max_retries=5):
 def init_db():
     conn = get_db()
     c = conn.cursor()
-    
-    # Enable WAL mode for better concurrency (do this first)
-    c.execute('PRAGMA journal_mode=WAL')
-    print("WAL mode enabled")
-    
+
+    # Database-specific setup
+    if not USE_POSTGRES:
+        # Enable WAL mode for SQLite better concurrency
+        c.execute('PRAGMA journal_mode=WAL')
+        print("WAL mode enabled")
+
+    # Define data types based on database
+    if USE_POSTGRES:
+        pk_type = "SERIAL PRIMARY KEY"
+        timestamp_default = "DEFAULT NOW()"
+    else:
+        pk_type = "INTEGER PRIMARY KEY"
+        timestamp_default = "DEFAULT CURRENT_TIMESTAMP"
+
     # Contacts table with new fields
-    c.execute('''CREATE TABLE IF NOT EXISTS contacts (
-        id INTEGER PRIMARY KEY,
+    c.execute(f'''CREATE TABLE IF NOT EXISTS contacts (
+        id {pk_type},
         name TEXT NOT NULL,
         email TEXT,
         phone TEXT,
@@ -46,21 +84,21 @@ def init_db():
         title TEXT,
         website TEXT,
         additional_info TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP {timestamp_default}
     )''')
-    
+
     # SKU table
-    c.execute('''CREATE TABLE IF NOT EXISTS skus (
-        id INTEGER PRIMARY KEY,
+    c.execute(f'''CREATE TABLE IF NOT EXISTS skus (
+        id {pk_type},
         name TEXT NOT NULL,
         category TEXT NOT NULL,
         subcategory TEXT NOT NULL,
         UNIQUE(name, category, subcategory)
     )''')
-    
+
     # Opportunities table - added expected_close_date
-    c.execute('''CREATE TABLE IF NOT EXISTS deals (
-        id INTEGER PRIMARY KEY,
+    c.execute(f'''CREATE TABLE IF NOT EXISTS deals (
+        id {pk_type},
         name TEXT NOT NULL,
         contact_id INTEGER,
         value REAL,
@@ -73,33 +111,33 @@ def init_db():
         need TEXT,
         timeline TEXT,
         expected_close_date TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP {timestamp_default},
         FOREIGN KEY(contact_id) REFERENCES contacts(id)
     )''')
-    
+
     # Opportunity-SKU junction table (many-to-many)
-    c.execute('''CREATE TABLE IF NOT EXISTS deal_skus (
-        id INTEGER PRIMARY KEY,
+    c.execute(f'''CREATE TABLE IF NOT EXISTS deal_skus (
+        id {pk_type},
         deal_id INTEGER NOT NULL,
         sku_id INTEGER NOT NULL,
         FOREIGN KEY(deal_id) REFERENCES deals(id) ON DELETE CASCADE,
         FOREIGN KEY(sku_id) REFERENCES skus(id) ON DELETE CASCADE,
         UNIQUE(deal_id, sku_id)
     )''')
-    
+
     # Activities table - added next_steps
-    c.execute('''CREATE TABLE IF NOT EXISTS activities (
-        id INTEGER PRIMARY KEY,
+    c.execute(f'''CREATE TABLE IF NOT EXISTS activities (
+        id {pk_type},
         deal_id INTEGER,
         contact_id INTEGER,
         type TEXT,
         description TEXT,
         next_steps TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP {timestamp_default},
         FOREIGN KEY(deal_id) REFERENCES deals(id),
         FOREIGN KEY(contact_id) REFERENCES contacts(id)
     )''')
-    
+
     conn.commit()
     conn.close()
     print("Database initialized successfully")
@@ -108,10 +146,18 @@ def migrate_db():
     """Add new columns if they don't exist - comprehensive migration"""
     conn = get_db()
     c = conn.cursor()
-    
+
     # Get existing columns in contacts table
-    c.execute("PRAGMA table_info(contacts)")
-    contacts_columns = [row[1] for row in c.fetchall()]
+    if USE_POSTGRES:
+        c.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'contacts'
+        """)
+        contacts_columns = [row['column_name'] for row in c.fetchall()]
+    else:
+        c.execute("PRAGMA table_info(contacts)")
+        contacts_columns = [row[1] for row in c.fetchall()]
+
     print(f"Existing contacts columns: {contacts_columns}")
     
     # Add missing columns to contacts
@@ -130,8 +176,16 @@ def migrate_db():
                 print(f"Error adding {col_name} to contacts: {e}")
     
     # Get existing columns in deals table
-    c.execute("PRAGMA table_info(deals)")
-    deals_columns = [row[1] for row in c.fetchall()]
+    if USE_POSTGRES:
+        c.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'deals'
+        """)
+        deals_columns = [row['column_name'] for row in c.fetchall()]
+    else:
+        c.execute("PRAGMA table_info(deals)")
+        deals_columns = [row[1] for row in c.fetchall()]
+
     print(f"Existing deals columns: {deals_columns}")
     
     # Add missing columns to deals
@@ -159,8 +213,16 @@ def migrate_db():
                 print(f"Error adding {col_name} to deals: {e}")
     
     # Get existing columns in activities table
-    c.execute("PRAGMA table_info(activities)")
-    activities_columns = [row[1] for row in c.fetchall()]
+    if USE_POSTGRES:
+        c.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'activities'
+        """)
+        activities_columns = [row['column_name'] for row in c.fetchall()]
+    else:
+        c.execute("PRAGMA table_info(activities)")
+        activities_columns = [row[1] for row in c.fetchall()]
+
     print(f"Existing activities columns: {activities_columns}")
     
     # Add missing columns to activities
@@ -207,10 +269,14 @@ def populate_skus():
     
     for sku_name, category, subcategory in skus:
         try:
-            c.execute('INSERT INTO skus (name, category, subcategory) VALUES (?, ?, ?)',
-                     (sku_name, category, subcategory))
-        except sqlite3.IntegrityError:
-            pass  # SKU already exists
+            if USE_POSTGRES:
+                c.execute('INSERT INTO skus (name, category, subcategory) VALUES (%s, %s, %s)',
+                         (sku_name, category, subcategory))
+            else:
+                c.execute('INSERT INTO skus (name, category, subcategory) VALUES (?, ?, ?)',
+                         (sku_name, category, subcategory))
+        except Exception:
+            pass  # SKU already exists (IntegrityError for both SQLite and PostgreSQL)
     
     conn.commit()
     conn.close()
