@@ -2318,6 +2318,91 @@
         // Store pipeline data globally for filtering
         let pipelineData = null;
 
+        // PIPELINE FUNNEL VISUALIZATION
+        function getStageFunnelColor(stage) {
+            const colors = {
+                'qualification': '#ff5555',      // Red
+                'needs_analysis': '#ff9944',     // Red-orange
+                'proposal': '#ffcc44',           // Yellow-orange
+                'negotiation': '#66cc66'         // Green
+            };
+            return colors[stage] || '#666';
+        }
+
+        function drawPipelineFunnel(stages, stageOrder) {
+            const svg = document.getElementById('funnelSVG');
+            if (!svg) return;
+
+            svg.innerHTML = ''; // Clear existing
+
+            const width = 400;
+            const height = 400;
+            const funnelWidth = 320;
+            const funnelStartX = (width - funnelWidth) / 2;
+            const stageHeight = 80;
+            const spacing = 10;
+
+            stageOrder.forEach((stage, index) => {
+                const stageData = stages[stage] || { total_value: 0, count: 0 };
+
+                // Calculate trapezoid widths (narrowing from top to bottom)
+                const topWidth = funnelWidth - (index * 60);
+                const bottomWidth = funnelWidth - ((index + 1) * 60);
+                const yPos = index * (stageHeight + spacing);
+
+                // Center the trapezoid
+                const topX = funnelStartX + (funnelWidth - topWidth) / 2;
+                const bottomX = funnelStartX + (funnelWidth - bottomWidth) / 2;
+
+                // Draw trapezoid
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                const d = `
+                    M ${topX} ${yPos}
+                    L ${topX + topWidth} ${yPos}
+                    L ${bottomX + bottomWidth} ${yPos + stageHeight}
+                    L ${bottomX} ${yPos + stageHeight}
+                    Z
+                `;
+                path.setAttribute('d', d);
+                path.setAttribute('fill', getStageFunnelColor(stage));
+                path.setAttribute('stroke', '#fff');
+                path.setAttribute('stroke-width', '2');
+                path.setAttribute('opacity', '0.9');
+                svg.appendChild(path);
+
+                // Add stage name
+                const nameText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                nameText.setAttribute('x', width / 2);
+                nameText.setAttribute('y', yPos + 30);
+                nameText.setAttribute('text-anchor', 'middle');
+                nameText.setAttribute('fill', '#fff');
+                nameText.setAttribute('font-size', '16');
+                nameText.setAttribute('font-weight', 'bold');
+                nameText.textContent = formatStageName(stage);
+                svg.appendChild(nameText);
+
+                // Add deal count
+                const countText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                countText.setAttribute('x', width / 2);
+                countText.setAttribute('y', yPos + 50);
+                countText.setAttribute('text-anchor', 'middle');
+                countText.setAttribute('fill', '#fff');
+                countText.setAttribute('font-size', '14');
+                countText.textContent = `${stageData.count} deals`;
+                svg.appendChild(countText);
+
+                // Add dollar amount
+                const valueText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                valueText.setAttribute('x', width / 2);
+                valueText.setAttribute('y', yPos + 68);
+                valueText.setAttribute('text-anchor', 'middle');
+                valueText.setAttribute('fill', '#fff');
+                valueText.setAttribute('font-size', '13');
+                valueText.textContent = formatCurrency(stageData.total_value);
+                svg.appendChild(valueText);
+            });
+        }
+
         // PIPELINE ANALYTICS
         function loadPipelineAnalytics() {
             fetch(`${API_URL}/pipeline/analytics`)
@@ -2330,52 +2415,36 @@
                     document.getElementById('pipelineWeightedValue').textContent = formatCurrency(data.totals.weighted);
                     document.getElementById('pipelineDealCount').textContent = data.totals.deal_count;
 
-                    // Render funnel by stage with enhanced metrics
+                    // Render funnel by stage with SVG visualization
                     const stageOrder = ['qualification', 'needs_analysis', 'proposal', 'negotiation'];
-                    const maxValue = Math.max(...stageOrder.map(s => data.stages[s]?.total_value || 0), 1);
+                    drawPipelineFunnel(data.stages, stageOrder);
 
-                    // Calculate conversion rates (simplified - % of total deals in each stage)
+                    // Also show detailed metrics below funnel
                     const totalDeals = data.totals.deal_count;
-
-                    const funnelHtml = stageOrder.map((stage, index) => {
+                    const metricsHtml = stageOrder.map((stage, index) => {
                         const stageData = data.stages[stage] || { total_value: 0, weighted_value: 0, count: 0 };
-                        const width = (stageData.total_value / maxValue) * 100;
                         const avgDealSize = stageData.count > 0 ? stageData.total_value / stageData.count : 0;
                         const avgProbability = stageData.count > 0 ? stageData.weighted_value / stageData.total_value * 100 : 0;
                         const stagePercent = totalDeals > 0 ? (stageData.count / totalDeals * 100).toFixed(0) : 0;
 
                         return `
-                            <div class="funnel-stage">
-                                <div class="funnel-stage-header">
-                                    <span class="funnel-stage-name">${formatStageName(stage)}</span>
-                                    <div class="funnel-stage-stats">
-                                        <div class="funnel-stage-value">${formatCurrency(stageData.total_value)}</div>
-                                        <div class="funnel-stage-weighted">${stageData.count} deals (${stagePercent}%) | Weighted: ${formatCurrency(stageData.weighted_value)}</div>
-                                        <div class="funnel-stage-conversion">Win Probability: ${avgProbability.toFixed(0)}%</div>
-                                    </div>
-                                </div>
-                                <div class="funnel-bar">
-                                    <div class="funnel-bar-fill" style="width: ${width}%;"></div>
-                                </div>
-                                <div class="funnel-stage-metrics">
-                                    <div class="funnel-metric">
-                                        <div class="funnel-metric-label">Deals</div>
-                                        <div class="funnel-metric-value">${stageData.count}</div>
-                                    </div>
-                                    <div class="funnel-metric">
-                                        <div class="funnel-metric-label">Avg Size</div>
-                                        <div class="funnel-metric-value">${formatCurrency(avgDealSize)}</div>
-                                    </div>
-                                    <div class="funnel-metric">
-                                        <div class="funnel-metric-label">Avg Prob</div>
-                                        <div class="funnel-metric-value">${avgProbability.toFixed(0)}%</div>
-                                    </div>
+                            <div style="padding: 12px; border-left: 3px solid ${getStageFunnelColor(stage)}; background: #f9f9f9; margin-bottom: 8px; border-radius: 4px;">
+                                <div style="font-weight: 500; color: #333; margin-bottom: 5px;">${formatStageName(stage)}</div>
+                                <div style="font-size: 12px; color: #666; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+                                    <div>Deals: <strong>${stageData.count}</strong> (${stagePercent}%)</div>
+                                    <div>Avg Size: <strong>${formatCurrency(avgDealSize)}</strong></div>
+                                    <div>Avg Prob: <strong>${avgProbability.toFixed(0)}%</strong></div>
                                 </div>
                             </div>
                         `;
                     }).join('');
 
-                    document.getElementById('pipelineFunnel').innerHTML = funnelHtml || '<div class="empty-state">No open opportunities</div>';
+                    document.getElementById('pipelineFunnel').innerHTML = `
+                        <svg id="funnelSVG" width="100%" height="400" viewBox="0 0 400 400"></svg>
+                        <div style="margin-top: 20px;">
+                            ${metricsHtml}
+                        </div>
+                    ` || '<div class="empty-state">No open opportunities</div>';
 
                     // Render monthly forecast
                     const sortedMonths = Object.keys(data.monthly_forecast).sort();
