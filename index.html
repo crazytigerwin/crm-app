@@ -1594,52 +1594,47 @@
             const { annual_goal, closed_revenue, percentage } = data;
             const svg = document.getElementById('goalGauge');
             const centerX = 200;
-            const centerY = 180;
+            const centerY = 150;
             const radius = 120;
 
             // Clear existing SVG
             svg.innerHTML = '';
 
-            // Create gauge background (semicircle arc from -180° to 0°)
-            const startAngle = Math.PI; // 180 degrees (left side)
-            const endAngle = 0; // 0 degrees (right side)
-
             // Calculate segment boundaries
             const third = annual_goal / 3;
             const twoThirds = (annual_goal * 2) / 3;
 
-            // Draw the three colored segments
-            // Red segment (0 to 1/3)
-            drawArc(svg, centerX, centerY, radius, Math.PI, Math.PI * 0.667, '#ff4444', 20);
-            // Yellow segment (1/3 to 2/3)
-            drawArc(svg, centerX, centerY, radius, Math.PI * 0.667, Math.PI * 0.333, '#ffaa00', 20);
-            // Green segment (2/3 to 3/3)
-            drawArc(svg, centerX, centerY, radius, Math.PI * 0.333, 0, '#44ff44', 20);
+            // Draw the three colored segments (bottom semicircle, left to right)
+            // Red segment (0 to 1/3) - LEFT SIDE
+            drawArc(svg, centerX, centerY, radius, Math.PI, Math.PI * 1.333, '#ff4444', 20);
+            // Yellow segment (1/3 to 2/3) - MIDDLE
+            drawArc(svg, centerX, centerY, radius, Math.PI * 1.333, Math.PI * 1.667, '#ffaa00', 20);
+            // Green segment (2/3 to 3/3) - RIGHT SIDE
+            drawArc(svg, centerX, centerY, radius, Math.PI * 1.667, Math.PI * 2, '#44ff44', 20);
 
-            // Add value labels
-            addText(svg, 30, centerY + 10, '$0', '12px', '#666');
-            addText(svg, 200, 75, formatCurrency(annual_goal), '14px', '#333', 'bold', 'middle');
-            addText(svg, 370, centerY + 10, formatCurrency(annual_goal), '12px', '#666', 'normal', 'end');
+            // Add value labels at bottom
+            addText(svg, 30, centerY + 25, '$0', '12px', '#666');
+            addText(svg, 370, centerY + 25, formatCurrency(annual_goal), '12px', '#666', 'normal', 'end');
 
             // Add third markers
-            const thirdAngle = Math.PI * 0.667;
+            const thirdAngle = Math.PI * 1.333;
             const thirdX = centerX + radius * Math.cos(thirdAngle);
-            const thirdY = centerY - radius * Math.sin(thirdAngle);
-            addText(svg, thirdX, thirdY - 15, formatCurrency(third), '11px', '#666', 'normal', 'middle');
+            const thirdY = centerY + radius * Math.sin(thirdAngle);
+            addText(svg, thirdX, thirdY + 20, formatCurrency(third), '11px', '#666', 'normal', 'middle');
 
-            const twoThirdsAngle = Math.PI * 0.333;
+            const twoThirdsAngle = Math.PI * 1.667;
             const twoThirdsX = centerX + radius * Math.cos(twoThirdsAngle);
-            const twoThirdsY = centerY - radius * Math.sin(twoThirdsAngle);
-            addText(svg, twoThirdsX, twoThirdsY - 15, formatCurrency(twoThirds), '11px', '#666', 'normal', 'middle');
+            const twoThirdsY = centerY + radius * Math.sin(twoThirdsAngle);
+            addText(svg, twoThirdsX, twoThirdsY + 20, formatCurrency(twoThirds), '11px', '#666', 'normal', 'middle');
 
-            // Calculate needle angle based on percentage
+            // Calculate needle angle based on percentage (from PI to 2*PI for bottom arc)
             const needlePercentage = Math.min(percentage, 100);
-            const needleAngle = Math.PI - (needlePercentage / 100) * Math.PI;
+            const needleAngle = Math.PI + (needlePercentage / 100) * Math.PI;
 
             // Draw needle
             const needleLength = radius - 10;
             const needleX = centerX + needleLength * Math.cos(needleAngle);
-            const needleY = centerY - needleLength * Math.sin(needleAngle);
+            const needleY = centerY + needleLength * Math.sin(needleAngle);
 
             const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
             line.setAttribute('x1', centerX);
@@ -1672,16 +1667,16 @@
 
         function drawArc(svg, cx, cy, radius, startAngle, endAngle, color, thickness) {
             const startX = cx + radius * Math.cos(startAngle);
-            const startY = cy - radius * Math.sin(startAngle);
+            const startY = cy + radius * Math.sin(startAngle);
             const endX = cx + radius * Math.cos(endAngle);
-            const endY = cy - radius * Math.sin(endAngle);
+            const endY = cy + radius * Math.sin(endAngle);
 
-            const largeArcFlag = (startAngle - endAngle) > Math.PI ? 1 : 0;
+            const largeArcFlag = Math.abs(endAngle - startAngle) > Math.PI ? 1 : 0;
 
             const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             const d = [
                 `M ${startX} ${startY}`,
-                `A ${radius} ${radius} 0 ${largeArcFlag} 0 ${endX} ${endY}`
+                `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${endX} ${endY}`
             ].join(' ');
 
             path.setAttribute('d', d);
