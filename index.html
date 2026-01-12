@@ -817,6 +817,18 @@
 
         <!-- DASHBOARD TAB -->
         <div id="dashboard" class="tab-content active">
+            <!-- Annual Goal Gauge -->
+            <div style="background: white; padding: 30px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 30px; position: relative;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="margin: 0; font-size: 20px; color: #2d7a7a;">Annual Sales Goal Progress</h2>
+                    <button onclick="openGoalSettingsModal()" style="padding: 8px 15px; font-size: 12px;">⚙️ Edit Goal</button>
+                </div>
+                <div style="position: relative; width: 100%; max-width: 600px; margin: 0 auto;">
+                    <svg id="goalGauge" width="100%" height="300" viewBox="0 0 400 220"></svg>
+                    <div id="goalText" style="text-align: center; margin-top: 10px;"></div>
+                </div>
+            </div>
+
             <div class="dashboard-grid">
                 <div class="metric-card">
                     <div class="metric-label">Closed This Quarter</div>
@@ -950,6 +962,14 @@
                     <div class="form-group">
                         <label>Expected Close Date</label>
                         <input type="date" id="oppCloseDate">
+                    </div>
+
+                    <div class="form-group" id="closedRevenueGroup" style="display: none;">
+                        <label>Closed Revenue *</label>
+                        <input type="number" id="oppClosedRevenue" placeholder="0.00" step="0.01">
+                        <div style="font-size: 11px; color: #666; margin-top: 5px;">
+                            Enter actual revenue received/invoiced (different from Deal Value if only partial revenue closed)
+                        </div>
                     </div>
 
                     <div class="form-group">
@@ -1279,6 +1299,24 @@
         </div>
     </div>
 
+    <!-- Goal Settings Modal -->
+    <div id="goalSettingsModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeGoalSettingsModal()">&times;</span>
+            <div class="modal-header">Edit Annual Sales Goal</div>
+
+            <div class="form-group">
+                <label>Annual Goal Amount *</label>
+                <input type="number" id="goalAmount" placeholder="1000000" step="1000">
+                <div style="font-size: 11px; color: #666; margin-top: 5px;">
+                    Enter your annual sales target in dollars
+                </div>
+            </div>
+
+            <button onclick="saveGoalSettings()" style="width: 100%; padding: 12px;">Save Goal</button>
+        </div>
+    </div>
+
     <script>
         // Auto-detect API URL based on current location
         const API_URL = window.location.origin + '/api';
@@ -1294,6 +1332,7 @@
         document.addEventListener('DOMContentLoaded', async () => {
             setActivityDateToToday();
             await loadAllData();
+            await loadGoalProgress(); // Load goal gauge
         });
         
         async function loadAllData() {
@@ -1539,6 +1578,180 @@
             }
         }
 
+        // GOAL PROGRESS GAUGE
+        async function loadGoalProgress() {
+            try {
+                const response = await fetch(`${API_URL}/goal/progress`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                drawGoalGauge(data);
+            } catch (err) {
+                console.error('Error loading goal progress:', err);
+            }
+        }
+
+        function drawGoalGauge(data) {
+            const { annual_goal, closed_revenue, percentage } = data;
+            const svg = document.getElementById('goalGauge');
+            const centerX = 200;
+            const centerY = 180;
+            const radius = 120;
+
+            // Clear existing SVG
+            svg.innerHTML = '';
+
+            // Create gauge background (semicircle arc from -180° to 0°)
+            const startAngle = Math.PI; // 180 degrees (left side)
+            const endAngle = 0; // 0 degrees (right side)
+
+            // Calculate segment boundaries
+            const third = annual_goal / 3;
+            const twoThirds = (annual_goal * 2) / 3;
+
+            // Draw the three colored segments
+            // Red segment (0 to 1/3)
+            drawArc(svg, centerX, centerY, radius, Math.PI, Math.PI * 0.667, '#ff4444', 20);
+            // Yellow segment (1/3 to 2/3)
+            drawArc(svg, centerX, centerY, radius, Math.PI * 0.667, Math.PI * 0.333, '#ffaa00', 20);
+            // Green segment (2/3 to 3/3)
+            drawArc(svg, centerX, centerY, radius, Math.PI * 0.333, 0, '#44ff44', 20);
+
+            // Add value labels
+            addText(svg, 30, centerY + 10, '$0', '12px', '#666');
+            addText(svg, 200, 75, formatCurrency(annual_goal), '14px', '#333', 'bold', 'middle');
+            addText(svg, 370, centerY + 10, formatCurrency(annual_goal), '12px', '#666', 'normal', 'end');
+
+            // Add third markers
+            const thirdAngle = Math.PI * 0.667;
+            const thirdX = centerX + radius * Math.cos(thirdAngle);
+            const thirdY = centerY - radius * Math.sin(thirdAngle);
+            addText(svg, thirdX, thirdY - 15, formatCurrency(third), '11px', '#666', 'normal', 'middle');
+
+            const twoThirdsAngle = Math.PI * 0.333;
+            const twoThirdsX = centerX + radius * Math.cos(twoThirdsAngle);
+            const twoThirdsY = centerY - radius * Math.sin(twoThirdsAngle);
+            addText(svg, twoThirdsX, twoThirdsY - 15, formatCurrency(twoThirds), '11px', '#666', 'normal', 'middle');
+
+            // Calculate needle angle based on percentage
+            const needlePercentage = Math.min(percentage, 100);
+            const needleAngle = Math.PI - (needlePercentage / 100) * Math.PI;
+
+            // Draw needle
+            const needleLength = radius - 10;
+            const needleX = centerX + needleLength * Math.cos(needleAngle);
+            const needleY = centerY - needleLength * Math.sin(needleAngle);
+
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', centerX);
+            line.setAttribute('y1', centerY);
+            line.setAttribute('x2', needleX);
+            line.setAttribute('y2', needleY);
+            line.setAttribute('stroke', '#2d7a7a');
+            line.setAttribute('stroke-width', '4');
+            line.setAttribute('stroke-linecap', 'round');
+            svg.appendChild(line);
+
+            // Draw center circle
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', centerX);
+            circle.setAttribute('cy', centerY);
+            circle.setAttribute('r', '8');
+            circle.setAttribute('fill', '#2d7a7a');
+            svg.appendChild(circle);
+
+            // Update text below gauge
+            document.getElementById('goalText').innerHTML = `
+                <div style="font-size: 24px; font-weight: bold; color: #2d7a7a; margin-bottom: 5px;">
+                    ${formatCurrency(closed_revenue)}
+                </div>
+                <div style="font-size: 14px; color: #666;">
+                    ${percentage.toFixed(1)}% of ${formatCurrency(annual_goal)} annual goal
+                </div>
+            `;
+        }
+
+        function drawArc(svg, cx, cy, radius, startAngle, endAngle, color, thickness) {
+            const startX = cx + radius * Math.cos(startAngle);
+            const startY = cy - radius * Math.sin(startAngle);
+            const endX = cx + radius * Math.cos(endAngle);
+            const endY = cy - radius * Math.sin(endAngle);
+
+            const largeArcFlag = (startAngle - endAngle) > Math.PI ? 1 : 0;
+
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            const d = [
+                `M ${startX} ${startY}`,
+                `A ${radius} ${radius} 0 ${largeArcFlag} 0 ${endX} ${endY}`
+            ].join(' ');
+
+            path.setAttribute('d', d);
+            path.setAttribute('fill', 'none');
+            path.setAttribute('stroke', color);
+            path.setAttribute('stroke-width', thickness);
+            path.setAttribute('stroke-linecap', 'round');
+            svg.appendChild(path);
+        }
+
+        function addText(svg, x, y, text, size, color, weight = 'normal', anchor = 'start') {
+            const textEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            textEl.setAttribute('x', x);
+            textEl.setAttribute('y', y);
+            textEl.setAttribute('fill', color);
+            textEl.setAttribute('font-size', size);
+            textEl.setAttribute('font-weight', weight);
+            textEl.setAttribute('text-anchor', anchor);
+            textEl.textContent = text;
+            svg.appendChild(textEl);
+        }
+
+        // GOAL SETTINGS MODAL
+        function openGoalSettingsModal() {
+            fetch(`${API_URL}/settings/annual_goal`)
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('goalAmount').value = data.value;
+                    document.getElementById('goalSettingsModal').classList.add('active');
+                })
+                .catch(err => {
+                    console.error('Error loading goal:', err);
+                    document.getElementById('goalAmount').value = '1000000';
+                    document.getElementById('goalSettingsModal').classList.add('active');
+                });
+        }
+
+        function closeGoalSettingsModal() {
+            document.getElementById('goalSettingsModal').classList.remove('active');
+        }
+
+        function saveGoalSettings() {
+            const goalAmount = document.getElementById('goalAmount').value;
+
+            if (!goalAmount || goalAmount <= 0) {
+                alert('Please enter a valid goal amount');
+                return;
+            }
+
+            fetch(`${API_URL}/settings/annual_goal`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ value: goalAmount })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(() => {
+                closeGoalSettingsModal();
+                loadGoalProgress(); // Refresh gauge
+            })
+            .catch(err => {
+                console.error('Error saving goal:', err);
+                alert('Error saving goal. Please try again.');
+            });
+        }
+
         function toggleCategory(category) {
             const allCheckbox = document.getElementById(`sku-${category}-all`);
             const skuCheckboxes = document.querySelectorAll(`.sku.${category}`);
@@ -1674,18 +1887,37 @@
             document.getElementById('oppStatus').value = 'open';
             document.getElementById('oppProbability').value = '';
             document.getElementById('oppCloseDate').value = '';
+            document.getElementById('oppClosedRevenue').value = '';
             document.getElementById('oppLeadSource').value = '';
             document.getElementById('oppBudget').value = '';
             document.getElementById('oppAuthority').value = '';
             document.getElementById('oppNeed').value = '';
             document.getElementById('oppTimeline').value = '';
-            
+
             // Clear all SKU selections
             document.querySelectorAll('input[type="checkbox"][class*="sku"]').forEach(cb => cb.checked = false);
             document.querySelectorAll('input[id*="sku-"][id*="-all"]').forEach(cb => cb.checked = false);
-            
+
+            // Hide closed revenue field by default
+            document.getElementById('closedRevenueGroup').style.display = 'none';
+
             document.getElementById('oppModal').classList.add('active');
         }
+
+        // Show/hide closed revenue field based on stage
+        document.addEventListener('DOMContentLoaded', () => {
+            const stageSelect = document.getElementById('oppStage');
+            if (stageSelect) {
+                stageSelect.addEventListener('change', function() {
+                    const closedRevenueGroup = document.getElementById('closedRevenueGroup');
+                    if (this.value === 'closed_won') {
+                        closedRevenueGroup.style.display = 'block';
+                    } else {
+                        closedRevenueGroup.style.display = 'none';
+                    }
+                });
+            }
+        });
 
         function openOppModal(oppId) {
             fetch(`${API_URL}/deals`)
@@ -1807,16 +2039,25 @@
                         document.getElementById('oppAuthority').value = opp.authority || '';
                         document.getElementById('oppNeed').value = opp.need || '';
                         document.getElementById('oppTimeline').value = opp.timeline || '';
-                        
+                        document.getElementById('oppClosedRevenue').value = opp.closed_revenue || '';
+
+                        // Show/hide closed revenue field based on stage
+                        const closedRevenueGroup = document.getElementById('closedRevenueGroup');
+                        if (opp.stage === 'closed_won') {
+                            closedRevenueGroup.style.display = 'block';
+                        } else {
+                            closedRevenueGroup.style.display = 'none';
+                        }
+
                         // Clear and check SKUs
                         document.querySelectorAll('input[type="checkbox"][class*="sku"]').forEach(cb => cb.checked = false);
                         document.querySelectorAll('input[id*="sku-"][id*="-all"]').forEach(cb => cb.checked = false);
-                        
+
                         opp.skus.forEach(sku => {
                             const checkbox = document.querySelector(`input[data-sku="${sku.id}"]`);
                             if (checkbox) checkbox.checked = true;
                         });
-                        
+
                         closeOppDetailModal();
                         document.getElementById('oppModal').classList.add('active');
                     }
@@ -1871,6 +2112,7 @@
                 stage: stage,
                 status: document.getElementById('oppStatus').value,
                 expected_close_date: document.getElementById('oppCloseDate').value || null,
+                closed_revenue: parseFloat(document.getElementById('oppClosedRevenue').value) || 0,
                 lead_source: document.getElementById('oppLeadSource').value,
                 budget: document.getElementById('oppBudget').value,
                 authority: document.getElementById('oppAuthority').value,

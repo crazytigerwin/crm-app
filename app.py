@@ -96,7 +96,7 @@ def init_db():
         UNIQUE(name, category, subcategory)
     )''')
 
-    # Opportunities table - added expected_close_date
+    # Opportunities table - added expected_close_date and closed_revenue
     c.execute(f'''CREATE TABLE IF NOT EXISTS deals (
         id {pk_type},
         name TEXT NOT NULL,
@@ -111,6 +111,7 @@ def init_db():
         need TEXT,
         timeline TEXT,
         expected_close_date TEXT,
+        closed_revenue REAL DEFAULT 0,
         created_at TIMESTAMP {timestamp_default},
         FOREIGN KEY(contact_id) REFERENCES contacts(id)
     )''')
@@ -137,6 +138,27 @@ def init_db():
         FOREIGN KEY(deal_id) REFERENCES deals(id),
         FOREIGN KEY(contact_id) REFERENCES contacts(id)
     )''')
+
+    # Settings table for annual goal and other configuration
+    c.execute(f'''CREATE TABLE IF NOT EXISTS settings (
+        id {pk_type},
+        key TEXT NOT NULL UNIQUE,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMP {timestamp_default}
+    )''')
+
+    # Insert default annual goal if not exists
+    if USE_POSTGRES:
+        c.execute('''
+            INSERT INTO settings (key, value)
+            VALUES (%s, %s)
+            ON CONFLICT (key) DO NOTHING
+        ''', ('annual_goal', '1000000'))
+    else:
+        c.execute('''
+            INSERT OR IGNORE INTO settings (key, value)
+            VALUES (?, ?)
+        ''', ('annual_goal', '1000000'))
 
     conn.commit()
     conn.close()
@@ -194,6 +216,7 @@ def migrate_db():
         ("contact_id", "INTEGER"),
         ("value", "REAL"),
         ("probability", "INTEGER"),
+        ("closed_revenue", "REAL DEFAULT 0"),
         ("stage", "TEXT"),
         ("status", "TEXT"),
         ("lead_source", "TEXT"),
@@ -460,13 +483,14 @@ def add_deal():
             print(f"Adding deal with data: {data}")
             c = conn.cursor()
             
-            c.execute('''INSERT INTO deals (name, contact_id, value, probability, stage, status, 
-                                            lead_source, budget, authority, need, timeline, expected_close_date)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            c.execute('''INSERT INTO deals (name, contact_id, value, probability, stage, status,
+                                            lead_source, budget, authority, need, timeline, expected_close_date, closed_revenue)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                      (data.get('name'), data.get('contact_id'), data.get('value'),
                       data.get('probability'), data.get('stage'), data.get('status'),
                       data.get('lead_source'), data.get('budget'), data.get('authority'),
-                      data.get('need'), data.get('timeline'), data.get('expected_close_date')))
+                      data.get('need'), data.get('timeline'), data.get('expected_close_date'),
+                      data.get('closed_revenue', 0)))
             
             deal_id = c.lastrowid
             
@@ -499,14 +523,15 @@ def update_deal(deal_id):
         try:
             c = conn.cursor()
             
-            c.execute('''UPDATE deals 
+            c.execute('''UPDATE deals
                          SET name=?, contact_id=?, value=?, probability=?, stage=?, status=?,
-                             lead_source=?, budget=?, authority=?, need=?, timeline=?, expected_close_date=?
+                             lead_source=?, budget=?, authority=?, need=?, timeline=?, expected_close_date=?, closed_revenue=?
                          WHERE id=?''',
                      (data.get('name'), data.get('contact_id'), data.get('value'),
                       data.get('probability'), data.get('stage'), data.get('status'),
                       data.get('lead_source'), data.get('budget'), data.get('authority'),
-                      data.get('need'), data.get('timeline'), data.get('expected_close_date'), deal_id))
+                      data.get('need'), data.get('timeline'), data.get('expected_close_date'),
+                      data.get('closed_revenue', 0), deal_id))
             
             # Update SKUs - delete old ones and add new ones
             c.execute('DELETE FROM deal_skus WHERE deal_id=?', (deal_id,))
@@ -714,6 +739,106 @@ def get_pipeline_analytics():
         return jsonify(analytics)
     except Exception as e:
         print(f"Error in get_pipeline_analytics: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+# ==================== SETTINGS & GOAL ENDPOINTS ====================
+
+@app.route('/api/settings/<key>', methods=['GET'])
+def get_setting(key):
+    def do_get():
+        conn = get_db()
+        try:
+            c = conn.cursor()
+            if USE_POSTGRES:
+                c.execute('SELECT value FROM settings WHERE key = %s', (key,))
+            else:
+                c.execute('SELECT value FROM settings WHERE key = ?', (key,))
+            result = c.fetchone()
+            return result['value'] if result else None
+        finally:
+            conn.close()
+
+    try:
+        value = execute_with_retry(do_get)
+        if value is None:
+            return jsonify({'error': 'Setting not found'}), 404
+        return jsonify({'key': key, 'value': value})
+    except Exception as e:
+        print(f"Error in get_setting: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/settings/<key>', methods=['PUT'])
+def update_setting(key):
+    def do_update():
+        data = request.json
+        conn = get_db()
+        try:
+            c = conn.cursor()
+            if USE_POSTGRES:
+                c.execute('''
+                    INSERT INTO settings (key, value, updated_at)
+                    VALUES (%s, %s, NOW())
+                    ON CONFLICT (key) DO UPDATE SET value = %s, updated_at = NOW()
+                ''', (key, data['value'], data['value']))
+            else:
+                c.execute('''
+                    INSERT OR REPLACE INTO settings (key, value, updated_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                ''', (key, data['value']))
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+    try:
+        execute_with_retry(do_update)
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error in update_setting: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/goal/progress', methods=['GET'])
+def get_goal_progress():
+    def do_get():
+        conn = get_db()
+        try:
+            c = conn.cursor()
+
+            # Get annual goal from settings
+            if USE_POSTGRES:
+                c.execute('SELECT value FROM settings WHERE key = %s', ('annual_goal',))
+            else:
+                c.execute('SELECT value FROM settings WHERE key = ?', ('annual_goal',))
+            goal_result = c.fetchone()
+            annual_goal = float(goal_result['value']) if goal_result else 1000000
+
+            # Sum closed revenue from all deals
+            if USE_POSTGRES:
+                c.execute('SELECT COALESCE(SUM(closed_revenue), 0) as total FROM deals')
+            else:
+                c.execute('SELECT COALESCE(SUM(closed_revenue), 0) as total FROM deals')
+            revenue_result = c.fetchone()
+            closed_revenue = float(revenue_result['total']) if revenue_result else 0
+
+            # Calculate percentage
+            percentage = (closed_revenue / annual_goal * 100) if annual_goal > 0 else 0
+
+            return {
+                'annual_goal': annual_goal,
+                'closed_revenue': closed_revenue,
+                'percentage': percentage
+            }
+        finally:
+            conn.close()
+
+    try:
+        progress = execute_with_retry(do_get)
+        return jsonify(progress)
+    except Exception as e:
+        print(f"Error in get_goal_progress: {e}")
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
