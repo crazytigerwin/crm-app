@@ -1616,16 +1616,17 @@
             addText(svg, 30, centerY + 25, '$0', '12px', '#666');
             addText(svg, 370, centerY + 25, formatCurrency(annual_goal), '12px', '#666', 'normal', 'end');
 
-            // Add third markers
+            // Add third markers (outside the arc)
+            const labelRadius = radius + 35;
             const thirdAngle = Math.PI * 1.333;
-            const thirdX = centerX + radius * Math.cos(thirdAngle);
-            const thirdY = centerY + radius * Math.sin(thirdAngle);
-            addText(svg, thirdX, thirdY + 20, formatCurrency(third), '11px', '#666', 'normal', 'middle');
+            const thirdX = centerX + labelRadius * Math.cos(thirdAngle);
+            const thirdY = centerY + labelRadius * Math.sin(thirdAngle);
+            addText(svg, thirdX, thirdY, formatCurrency(third), '10px', '#666', 'normal', 'middle');
 
             const twoThirdsAngle = Math.PI * 1.667;
-            const twoThirdsX = centerX + radius * Math.cos(twoThirdsAngle);
-            const twoThirdsY = centerY + radius * Math.sin(twoThirdsAngle);
-            addText(svg, twoThirdsX, twoThirdsY + 20, formatCurrency(twoThirds), '11px', '#666', 'normal', 'middle');
+            const twoThirdsX = centerX + labelRadius * Math.cos(twoThirdsAngle);
+            const twoThirdsY = centerY + labelRadius * Math.sin(twoThirdsAngle);
+            addText(svg, twoThirdsX, twoThirdsY, formatCurrency(twoThirds), '10px', '#666', 'normal', 'middle');
 
             // Calculate needle angle based on percentage (from PI to 2*PI for bottom arc)
             const needlePercentage = Math.min(percentage, 100);
