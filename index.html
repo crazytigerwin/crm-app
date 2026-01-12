@@ -852,6 +852,14 @@
                 </div>
             </div>
 
+            <!-- Tasks This Week Widget -->
+            <div style="background: white; padding: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 30px;">
+                <h2 style="margin: 0 0 20px 0; font-size: 18px; color: #2d7a7a;">Tasks This Week</h2>
+                <div id="tasksThisWeek">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
+
             <h2 style="margin-bottom: 20px; font-size: 18px; color: #333;">My Top 10 Opportunities</h2>
             <table>
                 <thead>
@@ -1240,6 +1248,14 @@
                     <textarea id="activityNextSteps" placeholder="What are the next steps for this opportunity?"></textarea>
                 </div>
 
+                <div class="form-group">
+                    <label>Next Step Due Date</label>
+                    <input type="date" id="activityDueDate">
+                    <div style="font-size: 11px; color: #666; margin-top: 5px;">
+                        When should the next step be completed?
+                    </div>
+                </div>
+
                 <button onclick="saveActivity()" style="width: 100%; padding: 12px;">Save Activity</button>
             </div>
         </div>
@@ -1333,6 +1349,7 @@
             setActivityDateToToday();
             await loadAllData();
             await loadGoalProgress(); // Load goal gauge
+            await loadTasksThisWeek(); // Load tasks widget
         });
         
         async function loadAllData() {
@@ -1746,6 +1763,61 @@
                 console.error('Error saving goal:', err);
                 alert('Error saving goal. Please try again.');
             });
+        }
+
+        // TASKS THIS WEEK WIDGET
+        async function loadTasksThisWeek() {
+            try {
+                const response = await fetch(`${API_URL}/tasks/this-week`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const tasks = await response.json();
+                displayTasksThisWeek(tasks);
+            } catch (err) {
+                console.error('Error loading tasks:', err);
+                document.getElementById('tasksThisWeek').innerHTML = '<div style="color: #999;">No tasks this week</div>';
+            }
+        }
+
+        function displayTasksThisWeek(tasks) {
+            const container = document.getElementById('tasksThisWeek');
+
+            if (tasks.length === 0) {
+                container.innerHTML = '<div style="color: #999; font-size: 14px;">No tasks scheduled for this week</div>';
+                return;
+            }
+
+            container.innerHTML = tasks.map(task => {
+                const dueDate = new Date(task.due_date);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const taskDate = new Date(dueDate);
+                taskDate.setHours(0, 0, 0, 0);
+
+                const isOverdue = taskDate < today;
+                const isToday = taskDate.getTime() === today.getTime();
+
+                let dateColor = '#666';
+                let dateLabel = dueDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+                if (isOverdue) {
+                    dateColor = '#ff4444';
+                    dateLabel = 'OVERDUE - ' + dateLabel;
+                } else if (isToday) {
+                    dateColor = '#ff9900';
+                    dateLabel = 'TODAY';
+                }
+
+                return `
+                    <div style="border-left: 3px solid ${isOverdue ? '#ff4444' : isToday ? '#ff9900' : '#2d7a7a'}; padding: 12px 15px; margin-bottom: 12px; background: ${isOverdue ? '#fff5f5' : isToday ? '#fff9f0' : '#f9f9f9'}; border-radius: 4px;">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 5px;">
+                            <div style="font-weight: 500; color: #333; font-size: 14px;">${task.next_steps || 'Follow up'}</div>
+                            <div style="font-size: 12px; color: ${dateColor}; font-weight: 500; white-space: nowrap; margin-left: 15px;">${dateLabel}</div>
+                        </div>
+                        ${task.deal_name ? `<div style="font-size: 12px; color: #666; margin-bottom: 3px;">Deal: ${task.deal_name}</div>` : ''}
+                        ${task.contact_name ? `<div style="font-size: 12px; color: #666;">Contact: ${task.contact_name}</div>` : ''}
+                    </div>
+                `;
+            }).join('');
         }
 
         function toggleCategory(category) {
@@ -2209,7 +2281,8 @@
                 deal_id: document.getElementById('activityDeal').value || null,
                 type: document.getElementById('activityType').value,
                 description: `[${document.getElementById('activityDate').value}] ${document.getElementById('activityDescription').value}`,
-                next_steps: document.getElementById('activityNextSteps').value || null
+                next_steps: document.getElementById('activityNextSteps').value || null,
+                due_date: document.getElementById('activityDueDate').value || null
             };
 
             fetch(`${API_URL}/activities`, {

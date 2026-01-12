@@ -126,7 +126,7 @@ def init_db():
         UNIQUE(deal_id, sku_id)
     )''')
 
-    # Activities table - added next_steps
+    # Activities table - added next_steps and due_date
     c.execute(f'''CREATE TABLE IF NOT EXISTS activities (
         id {pk_type},
         deal_id INTEGER,
@@ -134,6 +134,7 @@ def init_db():
         type TEXT,
         description TEXT,
         next_steps TEXT,
+        due_date DATE,
         created_at TIMESTAMP {timestamp_default},
         FOREIGN KEY(deal_id) REFERENCES deals(id),
         FOREIGN KEY(contact_id) REFERENCES contacts(id)
@@ -251,6 +252,7 @@ def migrate_db():
     # Add missing columns to activities
     activities_migrations = [
         ("next_steps", "TEXT"),
+        ("due_date", "DATE"),
     ]
     
     for col_name, col_type in activities_migrations:
@@ -609,10 +611,10 @@ def add_activity():
         conn = get_db()
         try:
             c = conn.cursor()
-            c.execute('''INSERT INTO activities (deal_id, contact_id, type, description, next_steps)
-                         VALUES (?, ?, ?, ?, ?)''',
+            c.execute('''INSERT INTO activities (deal_id, contact_id, type, description, next_steps, due_date)
+                         VALUES (?, ?, ?, ?, ?, ?)''',
                      (data.get('deal_id'), data.get('contact_id'), data.get('type'),
-                      data.get('description'), data.get('next_steps')))
+                      data.get('description'), data.get('next_steps'), data.get('due_date')))
             conn.commit()
             return True
         finally:
@@ -839,6 +841,54 @@ def get_goal_progress():
         return jsonify(progress)
     except Exception as e:
         print(f"Error in get_goal_progress: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/tasks/this-week', methods=['GET'])
+def get_tasks_this_week():
+    def do_get():
+        conn = get_db()
+        try:
+            c = conn.cursor()
+
+            # Get current week boundaries (Monday to Sunday)
+            from datetime import datetime, timedelta
+            today = datetime.now().date()
+            # Find Monday of current week
+            monday = today - timedelta(days=today.weekday())
+            # Find Sunday of current week
+            sunday = monday + timedelta(days=6)
+
+            # Query activities with due dates in current week
+            if USE_POSTGRES:
+                c.execute('''
+                    SELECT a.*, d.name as deal_name, c.name as contact_name
+                    FROM activities a
+                    LEFT JOIN deals d ON a.deal_id = d.id
+                    LEFT JOIN contacts c ON a.contact_id = c.id
+                    WHERE a.due_date >= %s AND a.due_date <= %s
+                    ORDER BY a.due_date ASC, a.created_at DESC
+                ''', (str(monday), str(sunday)))
+            else:
+                c.execute('''
+                    SELECT a.*, d.name as deal_name, c.name as contact_name
+                    FROM activities a
+                    LEFT JOIN deals d ON a.deal_id = d.id
+                    LEFT JOIN contacts c ON a.contact_id = c.id
+                    WHERE a.due_date >= ? AND a.due_date <= ?
+                    ORDER BY a.due_date ASC, a.created_at DESC
+                ''', (str(monday), str(sunday)))
+
+            tasks = c.fetchall()
+            return [dict(task) for task in tasks]
+        finally:
+            conn.close()
+
+    try:
+        tasks = execute_with_retry(do_get)
+        return jsonify(tasks)
+    except Exception as e:
+        print(f"Error in get_tasks_this_week: {e}")
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
