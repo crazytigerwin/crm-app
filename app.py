@@ -726,9 +726,14 @@ def get_deals():
             for deal in deals:
                 deal_dict = dict(deal)
                 # Get SKUs for this deal
-                c.execute('''SELECT s.* FROM skus s
-                             INNER JOIN deal_skus ds ON s.id = ds.sku_id
-                             WHERE ds.deal_id = ?''', (deal['id'],))
+                if USE_POSTGRES:
+                    c.execute('''SELECT s.* FROM skus s
+                                 INNER JOIN deal_skus ds ON s.id = ds.sku_id
+                                 WHERE ds.deal_id = %s''', (deal['id'],))
+                else:
+                    c.execute('''SELECT s.* FROM skus s
+                                 INNER JOIN deal_skus ds ON s.id = ds.sku_id
+                                 WHERE ds.deal_id = ?''', (deal['id'],))
                 skus = c.fetchall()
                 deal_dict['skus'] = [dict(sku) for sku in skus]
                 deals_list.append(deal_dict)
@@ -753,24 +758,38 @@ def add_deal():
             data = request.json
             print(f"Adding deal with data: {data}")
             c = conn.cursor()
-            
-            c.execute('''INSERT INTO deals (name, contact_id, value, probability, stage, status,
-                                            lead_source, budget, authority, need, timeline, expected_close_date, closed_revenue)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                     (data.get('name'), data.get('contact_id'), data.get('value'),
-                      data.get('probability'), data.get('stage'), data.get('status'),
-                      data.get('lead_source'), data.get('budget'), data.get('authority'),
-                      data.get('need'), data.get('timeline'), data.get('expected_close_date'),
-                      data.get('closed_revenue', 0)))
-            
-            deal_id = c.lastrowid
-            
+
+            if USE_POSTGRES:
+                c.execute('''INSERT INTO deals (name, contact_id, value, probability, stage, status,
+                                                lead_source, budget, authority, need, timeline, expected_close_date, closed_revenue)
+                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id''',
+                         (data.get('name'), data.get('contact_id'), data.get('value'),
+                          data.get('probability'), data.get('stage'), data.get('status'),
+                          data.get('lead_source'), data.get('budget'), data.get('authority'),
+                          data.get('need'), data.get('timeline'), data.get('expected_close_date'),
+                          data.get('closed_revenue', 0)))
+                deal_id = c.fetchone()['id']
+            else:
+                c.execute('''INSERT INTO deals (name, contact_id, value, probability, stage, status,
+                                                lead_source, budget, authority, need, timeline, expected_close_date, closed_revenue)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                         (data.get('name'), data.get('contact_id'), data.get('value'),
+                          data.get('probability'), data.get('stage'), data.get('status'),
+                          data.get('lead_source'), data.get('budget'), data.get('authority'),
+                          data.get('need'), data.get('timeline'), data.get('expected_close_date'),
+                          data.get('closed_revenue', 0)))
+                deal_id = c.lastrowid
+
             # Add SKUs to the deal
             sku_ids = data.get('sku_ids', [])
             for sku_id in sku_ids:
-                c.execute('INSERT INTO deal_skus (deal_id, sku_id) VALUES (?, ?)', 
-                         (deal_id, sku_id))
-            
+                if USE_POSTGRES:
+                    c.execute('INSERT INTO deal_skus (deal_id, sku_id) VALUES (%s, %s)',
+                             (deal_id, sku_id))
+                else:
+                    c.execute('INSERT INTO deal_skus (deal_id, sku_id) VALUES (?, ?)',
+                             (deal_id, sku_id))
+
             conn.commit()
             print(f"Deal created successfully with id: {deal_id}")
             return deal_id
@@ -793,24 +812,42 @@ def update_deal(deal_id):
         conn = get_db()
         try:
             c = conn.cursor()
-            
-            c.execute('''UPDATE deals
-                         SET name=?, contact_id=?, value=?, probability=?, stage=?, status=?,
-                             lead_source=?, budget=?, authority=?, need=?, timeline=?, expected_close_date=?, closed_revenue=?
-                         WHERE id=?''',
-                     (data.get('name'), data.get('contact_id'), data.get('value'),
-                      data.get('probability'), data.get('stage'), data.get('status'),
-                      data.get('lead_source'), data.get('budget'), data.get('authority'),
-                      data.get('need'), data.get('timeline'), data.get('expected_close_date'),
-                      data.get('closed_revenue', 0), deal_id))
-            
-            # Update SKUs - delete old ones and add new ones
-            c.execute('DELETE FROM deal_skus WHERE deal_id=?', (deal_id,))
-            sku_ids = data.get('sku_ids', [])
-            for sku_id in sku_ids:
-                c.execute('INSERT INTO deal_skus (deal_id, sku_id) VALUES (?, ?)', 
-                         (deal_id, sku_id))
-            
+
+            if USE_POSTGRES:
+                c.execute('''UPDATE deals
+                             SET name=%s, contact_id=%s, value=%s, probability=%s, stage=%s, status=%s,
+                                 lead_source=%s, budget=%s, authority=%s, need=%s, timeline=%s, expected_close_date=%s, closed_revenue=%s
+                             WHERE id=%s''',
+                         (data.get('name'), data.get('contact_id'), data.get('value'),
+                          data.get('probability'), data.get('stage'), data.get('status'),
+                          data.get('lead_source'), data.get('budget'), data.get('authority'),
+                          data.get('need'), data.get('timeline'), data.get('expected_close_date'),
+                          data.get('closed_revenue', 0), deal_id))
+
+                # Update SKUs - delete old ones and add new ones
+                c.execute('DELETE FROM deal_skus WHERE deal_id=%s', (deal_id,))
+                sku_ids = data.get('sku_ids', [])
+                for sku_id in sku_ids:
+                    c.execute('INSERT INTO deal_skus (deal_id, sku_id) VALUES (%s, %s)',
+                             (deal_id, sku_id))
+            else:
+                c.execute('''UPDATE deals
+                             SET name=?, contact_id=?, value=?, probability=?, stage=?, status=?,
+                                 lead_source=?, budget=?, authority=?, need=?, timeline=?, expected_close_date=?, closed_revenue=?
+                             WHERE id=?''',
+                         (data.get('name'), data.get('contact_id'), data.get('value'),
+                          data.get('probability'), data.get('stage'), data.get('status'),
+                          data.get('lead_source'), data.get('budget'), data.get('authority'),
+                          data.get('need'), data.get('timeline'), data.get('expected_close_date'),
+                          data.get('closed_revenue', 0), deal_id))
+
+                # Update SKUs - delete old ones and add new ones
+                c.execute('DELETE FROM deal_skus WHERE deal_id=?', (deal_id,))
+                sku_ids = data.get('sku_ids', [])
+                for sku_id in sku_ids:
+                    c.execute('INSERT INTO deal_skus (deal_id, sku_id) VALUES (?, ?)',
+                             (deal_id, sku_id))
+
             conn.commit()
             print(f"Deal {deal_id} updated successfully")
             return True
@@ -831,7 +868,10 @@ def delete_deal(deal_id):
         conn = get_db()
         try:
             c = conn.cursor()
-            c.execute('DELETE FROM deals WHERE id=?', (deal_id,))
+            if USE_POSTGRES:
+                c.execute('DELETE FROM deals WHERE id=%s', (deal_id,))
+            else:
+                c.execute('DELETE FROM deals WHERE id=?', (deal_id,))
             conn.commit()
             return True
         finally:
@@ -856,7 +896,10 @@ def get_activities():
             c = conn.cursor()
 
             if deal_id:
-                c.execute('SELECT * FROM activities WHERE deal_id=? ORDER BY created_at DESC', (deal_id,))
+                if USE_POSTGRES:
+                    c.execute('SELECT * FROM activities WHERE deal_id=%s ORDER BY created_at DESC', (deal_id,))
+                else:
+                    c.execute('SELECT * FROM activities WHERE deal_id=? ORDER BY created_at DESC', (deal_id,))
             else:
                 c.execute('SELECT * FROM activities ORDER BY created_at DESC')
 
@@ -880,10 +923,16 @@ def add_activity():
         conn = get_db()
         try:
             c = conn.cursor()
-            c.execute('''INSERT INTO activities (deal_id, contact_id, type, description, next_steps, due_date)
-                         VALUES (?, ?, ?, ?, ?, ?)''',
-                     (data.get('deal_id'), data.get('contact_id'), data.get('type'),
-                      data.get('description'), data.get('next_steps'), data.get('due_date')))
+            if USE_POSTGRES:
+                c.execute('''INSERT INTO activities (deal_id, contact_id, type, description, next_steps, due_date)
+                             VALUES (%s, %s, %s, %s, %s, %s)''',
+                         (data.get('deal_id'), data.get('contact_id'), data.get('type'),
+                          data.get('description'), data.get('next_steps'), data.get('due_date')))
+            else:
+                c.execute('''INSERT INTO activities (deal_id, contact_id, type, description, next_steps, due_date)
+                             VALUES (?, ?, ?, ?, ?, ?)''',
+                         (data.get('deal_id'), data.get('contact_id'), data.get('type'),
+                          data.get('description'), data.get('next_steps'), data.get('due_date')))
             conn.commit()
             return True
         finally:
@@ -906,9 +955,17 @@ def get_revenue():
         try:
             c = conn.cursor()
 
-            realized = c.execute('SELECT SUM(value) as total FROM deals WHERE status = ?', ('closed',)).fetchone()
-            pipeline = c.execute('SELECT SUM(value) as total FROM deals WHERE status = ?', ('open',)).fetchone()
-            open_deals = c.execute('SELECT value, probability FROM deals WHERE status = ?', ('open',)).fetchall()
+            if USE_POSTGRES:
+                c.execute('SELECT SUM(value) as total FROM deals WHERE status = %s', ('closed',))
+                realized = c.fetchone()
+                c.execute('SELECT SUM(value) as total FROM deals WHERE status = %s', ('open',))
+                pipeline = c.fetchone()
+                c.execute('SELECT value, probability FROM deals WHERE status = %s', ('open',))
+                open_deals = c.fetchall()
+            else:
+                realized = c.execute('SELECT SUM(value) as total FROM deals WHERE status = ?', ('closed',)).fetchone()
+                pipeline = c.execute('SELECT SUM(value) as total FROM deals WHERE status = ?', ('open',)).fetchone()
+                open_deals = c.execute('SELECT value, probability FROM deals WHERE status = ?', ('open',)).fetchall()
 
             forecasted = sum((deal['value'] * deal['probability'] / 100) for deal in open_deals if deal['value'] and deal['probability'])
 
@@ -961,9 +1018,14 @@ def get_pipeline_analytics():
                 stage = deal['stage']
                 if stage in stages:
                     # Get SKUs for this deal
-                    c.execute('''SELECT s.* FROM skus s
-                                 INNER JOIN deal_skus ds ON s.id = ds.sku_id
-                                 WHERE ds.deal_id = ?''', (deal['id'],))
+                    if USE_POSTGRES:
+                        c.execute('''SELECT s.* FROM skus s
+                                     INNER JOIN deal_skus ds ON s.id = ds.sku_id
+                                     WHERE ds.deal_id = %s''', (deal['id'],))
+                    else:
+                        c.execute('''SELECT s.* FROM skus s
+                                     INNER JOIN deal_skus ds ON s.id = ds.sku_id
+                                     WHERE ds.deal_id = ?''', (deal['id'],))
                     skus = c.fetchall()
                     deal_dict['skus'] = [dict(sku) for sku in skus]
 
