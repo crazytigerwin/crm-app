@@ -74,6 +74,16 @@ def init_db():
         pk_type = "INTEGER PRIMARY KEY"
         timestamp_default = "DEFAULT CURRENT_TIMESTAMP"
 
+    # Companies table
+    c.execute(f'''CREATE TABLE IF NOT EXISTS companies (
+        id {pk_type},
+        name TEXT NOT NULL,
+        website TEXT,
+        industry TEXT,
+        notes TEXT,
+        created_at TIMESTAMP {timestamp_default}
+    )''')
+
     # Contacts table with new fields
     c.execute(f'''CREATE TABLE IF NOT EXISTS contacts (
         id {pk_type},
@@ -81,10 +91,12 @@ def init_db():
         email TEXT,
         phone TEXT,
         company TEXT,
+        company_id INTEGER,
         title TEXT,
         website TEXT,
         additional_info TEXT,
-        created_at TIMESTAMP {timestamp_default}
+        created_at TIMESTAMP {timestamp_default},
+        FOREIGN KEY(company_id) REFERENCES companies(id)
     )''')
 
     # SKU table
@@ -170,6 +182,33 @@ def migrate_db():
     conn = get_db()
     c = conn.cursor()
 
+    # Ensure companies table exists (for old databases)
+    if USE_POSTGRES:
+        c.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables
+                WHERE table_name = 'companies'
+            )
+        """)
+        companies_exists = c.fetchone()[0]
+    else:
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='companies'")
+        companies_exists = c.fetchone() is not None
+
+    if not companies_exists:
+        print("Creating companies table...")
+        pk_type = "SERIAL PRIMARY KEY" if USE_POSTGRES else "INTEGER PRIMARY KEY"
+        timestamp_default = "DEFAULT NOW()" if USE_POSTGRES else "DEFAULT CURRENT_TIMESTAMP"
+        c.execute(f'''CREATE TABLE companies (
+            id {pk_type},
+            name TEXT NOT NULL,
+            website TEXT,
+            industry TEXT,
+            notes TEXT,
+            created_at TIMESTAMP {timestamp_default}
+        )''')
+        print("Companies table created")
+
     # Get existing columns in contacts table
     if USE_POSTGRES:
         c.execute("""
@@ -182,14 +221,15 @@ def migrate_db():
         contacts_columns = [row[1] for row in c.fetchall()]
 
     print(f"Existing contacts columns: {contacts_columns}")
-    
+
     # Add missing columns to contacts
     contacts_migrations = [
         ("title", "TEXT"),
         ("website", "TEXT"),
         ("additional_info", "TEXT"),
+        ("company_id", "INTEGER"),
     ]
-    
+
     for col_name, col_type in contacts_migrations:
         if col_name not in contacts_columns:
             try:
@@ -262,7 +302,65 @@ def migrate_db():
                 print(f"Added column {col_name} to activities")
             except Exception as e:
                 print(f"Error adding {col_name} to activities: {e}")
-    
+
+    # Migrate existing contact data: extract company names and link contacts to companies
+    print("Migrating contact company data to companies table...")
+
+    # Get all contacts with company names that don't have company_id set
+    if USE_POSTGRES:
+        c.execute('SELECT id, company FROM contacts WHERE company IS NOT NULL AND company != %s AND company_id IS NULL', ('',))
+    else:
+        c.execute('SELECT id, company FROM contacts WHERE company IS NOT NULL AND company != ? AND company_id IS NULL', ('',))
+
+    contacts_with_companies = c.fetchall()
+    print(f"Found {len(contacts_with_companies)} contacts with company names to migrate")
+
+    # Track unique company names and their IDs
+    company_map = {}
+
+    for contact in contacts_with_companies:
+        contact_id = contact['id']
+        company_name = contact['company'].strip()
+
+        # Skip empty company names
+        if not company_name:
+            continue
+
+        # Check if we already created this company in this migration
+        if company_name in company_map:
+            company_id = company_map[company_name]
+        else:
+            # Check if company already exists in database
+            if USE_POSTGRES:
+                c.execute('SELECT id FROM companies WHERE name = %s', (company_name,))
+            else:
+                c.execute('SELECT id FROM companies WHERE name = ?', (company_name,))
+
+            existing_company = c.fetchone()
+
+            if existing_company:
+                company_id = existing_company['id']
+            else:
+                # Create new company
+                if USE_POSTGRES:
+                    c.execute('INSERT INTO companies (name) VALUES (%s) RETURNING id', (company_name,))
+                    company_id = c.fetchone()['id']
+                else:
+                    c.execute('INSERT INTO companies (name) VALUES (?)', (company_name,))
+                    company_id = c.lastrowid
+
+                print(f"Created company: {company_name} (ID: {company_id})")
+
+            company_map[company_name] = company_id
+
+        # Link contact to company
+        if USE_POSTGRES:
+            c.execute('UPDATE contacts SET company_id = %s WHERE id = %s', (company_id, contact_id))
+        else:
+            c.execute('UPDATE contacts SET company_id = ? WHERE id = ?', (company_id, contact_id))
+
+    print(f"Migrated {len(contacts_with_companies)} contacts to {len(company_map)} companies")
+
     conn.commit()
     conn.close()
     print("Migration complete!")
@@ -332,7 +430,13 @@ def get_contacts():
         conn = get_db()
         try:
             c = conn.cursor()
-            c.execute('SELECT * FROM contacts ORDER BY name')
+            # Include company name in contact data
+            c.execute('''
+                SELECT c.*, co.name as company_name
+                FROM contacts c
+                LEFT JOIN companies co ON c.company_id = co.id
+                ORDER BY c.name
+            ''')
             contacts = c.fetchall()
             return [dict(contact) for contact in contacts]
         finally:
@@ -353,13 +457,22 @@ def add_contact():
         conn = get_db()
         try:
             c = conn.cursor()
-            c.execute('''INSERT INTO contacts (name, email, phone, company, title, website, additional_info)
-                         VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                     (data.get('name'), data.get('email'), data.get('phone'),
-                      data.get('company'), data.get('title'), data.get('website'),
-                      data.get('additional_info')))
+            if USE_POSTGRES:
+                c.execute('''INSERT INTO contacts (name, email, phone, company, company_id, title, website, additional_info)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id''',
+                         (data.get('name'), data.get('email'), data.get('phone'),
+                          data.get('company'), data.get('company_id'), data.get('title'), data.get('website'),
+                          data.get('additional_info')))
+                contact_id = c.fetchone()['id']
+            else:
+                c.execute('''INSERT INTO contacts (name, email, phone, company, company_id, title, website, additional_info)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                         (data.get('name'), data.get('email'), data.get('phone'),
+                          data.get('company'), data.get('company_id'), data.get('title'), data.get('website'),
+                          data.get('additional_info')))
+                contact_id = c.lastrowid
             conn.commit()
-            return c.lastrowid
+            return contact_id
         finally:
             conn.close()
 
@@ -378,12 +491,20 @@ def update_contact(contact_id):
         conn = get_db()
         try:
             c = conn.cursor()
-            c.execute('''UPDATE contacts
-                         SET name=?, email=?, phone=?, company=?, title=?, website=?, additional_info=?
-                         WHERE id=?''',
-                     (data.get('name'), data.get('email'), data.get('phone'),
-                      data.get('company'), data.get('title'), data.get('website'),
-                      data.get('additional_info'), contact_id))
+            if USE_POSTGRES:
+                c.execute('''UPDATE contacts
+                            SET name=%s, email=%s, phone=%s, company=%s, company_id=%s, title=%s, website=%s, additional_info=%s
+                            WHERE id=%s''',
+                         (data.get('name'), data.get('email'), data.get('phone'),
+                          data.get('company'), data.get('company_id'), data.get('title'), data.get('website'),
+                          data.get('additional_info'), contact_id))
+            else:
+                c.execute('''UPDATE contacts
+                            SET name=?, email=?, phone=?, company=?, company_id=?, title=?, website=?, additional_info=?
+                            WHERE id=?''',
+                         (data.get('name'), data.get('email'), data.get('phone'),
+                          data.get('company'), data.get('company_id'), data.get('title'), data.get('website'),
+                          data.get('additional_info'), contact_id))
             conn.commit()
             return True
         finally:
@@ -414,6 +535,155 @@ def delete_contact(contact_id):
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error in delete_contact: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+# ==================== COMPANIES ENDPOINTS ====================
+
+@app.route('/api/companies', methods=['GET'])
+def get_companies():
+    def do_get():
+        conn = get_db()
+        try:
+            c = conn.cursor()
+            # Get companies with their contact count
+            if USE_POSTGRES:
+                c.execute('''
+                    SELECT c.*, COUNT(ct.id) as contact_count
+                    FROM companies c
+                    LEFT JOIN contacts ct ON c.id = ct.company_id
+                    GROUP BY c.id, c.name, c.website, c.industry, c.notes, c.created_at
+                    ORDER BY c.name
+                ''')
+            else:
+                c.execute('''
+                    SELECT c.*, COUNT(ct.id) as contact_count
+                    FROM companies c
+                    LEFT JOIN contacts ct ON c.id = ct.company_id
+                    GROUP BY c.id
+                    ORDER BY c.name
+                ''')
+            companies = c.fetchall()
+            return [dict(company) for company in companies]
+        finally:
+            conn.close()
+
+    try:
+        companies = execute_with_retry(do_get)
+        return jsonify(companies)
+    except Exception as e:
+        print(f"Error in get_companies: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/companies/<int:company_id>/contacts', methods=['GET'])
+def get_company_contacts(company_id):
+    def do_get():
+        conn = get_db()
+        try:
+            c = conn.cursor()
+            if USE_POSTGRES:
+                c.execute('SELECT * FROM contacts WHERE company_id = %s ORDER BY name', (company_id,))
+            else:
+                c.execute('SELECT * FROM contacts WHERE company_id = ? ORDER BY name', (company_id,))
+            contacts = c.fetchall()
+            return [dict(contact) for contact in contacts]
+        finally:
+            conn.close()
+
+    try:
+        contacts = execute_with_retry(do_get)
+        return jsonify(contacts)
+    except Exception as e:
+        print(f"Error in get_company_contacts: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/companies', methods=['POST'])
+def add_company():
+    def do_add():
+        data = request.json
+        conn = get_db()
+        try:
+            c = conn.cursor()
+            if USE_POSTGRES:
+                c.execute('''INSERT INTO companies (name, website, industry, notes)
+                            VALUES (%s, %s, %s, %s) RETURNING id''',
+                         (data.get('name'), data.get('website'), data.get('industry'), data.get('notes')))
+                company_id = c.fetchone()['id']
+            else:
+                c.execute('''INSERT INTO companies (name, website, industry, notes)
+                            VALUES (?, ?, ?, ?)''',
+                         (data.get('name'), data.get('website'), data.get('industry'), data.get('notes')))
+                company_id = c.lastrowid
+            conn.commit()
+            return company_id
+        finally:
+            conn.close()
+
+    try:
+        company_id = execute_with_retry(do_add)
+        return jsonify({'id': company_id}), 201
+    except Exception as e:
+        print(f"Error in add_company: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/companies/<int:company_id>', methods=['PUT'])
+def update_company(company_id):
+    def do_update():
+        data = request.json
+        conn = get_db()
+        try:
+            c = conn.cursor()
+            if USE_POSTGRES:
+                c.execute('''UPDATE companies
+                            SET name=%s, website=%s, industry=%s, notes=%s
+                            WHERE id=%s''',
+                         (data.get('name'), data.get('website'), data.get('industry'),
+                          data.get('notes'), company_id))
+            else:
+                c.execute('''UPDATE companies
+                            SET name=?, website=?, industry=?, notes=?
+                            WHERE id=?''',
+                         (data.get('name'), data.get('website'), data.get('industry'),
+                          data.get('notes'), company_id))
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+    try:
+        execute_with_retry(do_update)
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error in update_company: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/companies/<int:company_id>', methods=['DELETE'])
+def delete_company(company_id):
+    def do_delete():
+        conn = get_db()
+        try:
+            c = conn.cursor()
+            # Set company_id to NULL for all contacts before deleting company
+            if USE_POSTGRES:
+                c.execute('UPDATE contacts SET company_id = NULL WHERE company_id = %s', (company_id,))
+                c.execute('DELETE FROM companies WHERE id=%s', (company_id,))
+            else:
+                c.execute('UPDATE contacts SET company_id = NULL WHERE company_id = ?', (company_id,))
+                c.execute('DELETE FROM companies WHERE id=?', (company_id,))
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+    try:
+        execute_with_retry(do_delete)
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error in delete_company: {e}")
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 

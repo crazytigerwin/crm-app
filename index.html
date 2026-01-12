@@ -812,6 +812,7 @@
             <button class="tab-btn" onclick="switchTab('opportunities')">Opportunities</button>
             <button class="tab-btn" onclick="switchTab('pipeline')">Pipeline</button>
             <button class="tab-btn" onclick="switchTab('activities')">Activities</button>
+            <button class="tab-btn" onclick="switchTab('companies')">Companies</button>
             <button class="tab-btn" onclick="switchTab('contacts')">Contacts</button>
         </div>
 
@@ -1260,6 +1261,15 @@
             </div>
         </div>
 
+        <!-- COMPANIES TAB -->
+        <div id="companies" class="tab-content">
+            <div style="margin-bottom: 20px;">
+                <button onclick="openAddCompanyModal()">+ Add Company</button>
+            </div>
+
+            <div id="companiesList"></div>
+        </div>
+
         <!-- CONTACTS TAB -->
         <div id="contacts" class="tab-content">
             <div style="margin-bottom: 20px;">
@@ -1293,7 +1303,13 @@
 
             <div class="form-group">
                 <label>Company</label>
-                <input type="text" id="contactCompany" placeholder="Company name">
+                <select id="contactCompanyId">
+                    <option value="">-- Select Company --</option>
+                </select>
+                <input type="text" id="contactCompany" placeholder="Or enter company name" style="margin-top: 8px;">
+                <div style="font-size: 11px; color: #666; margin-top: 5px;">
+                    Select an existing company or enter a new company name
+                </div>
             </div>
 
             <div class="form-group">
@@ -1312,6 +1328,36 @@
             </div>
 
             <button onclick="saveContact()" style="width: 100%; padding: 12px;">Save Contact</button>
+        </div>
+    </div>
+
+    <!-- Add/Edit Company Modal -->
+    <div id="companyModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeCompanyModal()">&times;</span>
+            <div class="modal-header">Add Company</div>
+
+            <div class="form-group">
+                <label>Company Name *</label>
+                <input type="text" id="companyName" placeholder="Company name">
+            </div>
+
+            <div class="form-group">
+                <label>Website</label>
+                <input type="text" id="companyWebsite" placeholder="https://example.com">
+            </div>
+
+            <div class="form-group">
+                <label>Industry</label>
+                <input type="text" id="companyIndustry" placeholder="e.g., Manufacturing, Construction">
+            </div>
+
+            <div class="form-group">
+                <label>Notes</label>
+                <textarea id="companyNotes" placeholder="Any notes about this company"></textarea>
+            </div>
+
+            <button onclick="saveCompany()" style="width: 100%; padding: 12px;">Save Company</button>
         </div>
     </div>
 
@@ -1354,7 +1400,8 @@
         
         async function loadAllData() {
             try {
-                // Load contacts first
+                // Load companies and contacts first
+                await loadCompanies();
                 await loadContacts();
                 // Then load deals (this caches the data)
                 await loadDealsData();
@@ -1592,6 +1639,8 @@
                 updateDashboardWithDeals(); // Use cached data
             } else if (tabName === 'pipeline') {
                 loadPipelineAnalytics();
+            } else if (tabName === 'companies') {
+                loadCompanies();
             }
         }
 
@@ -1830,29 +1879,250 @@
         }
 
         // CONTACTS
+        // ========== COMPANIES FUNCTIONS ==========
+        let currentEditingCompanyId = null;
+
+        function loadCompanies() {
+            return fetch(`${API_URL}/companies`)
+                .then(r => r.json())
+                .then(companies => {
+                    const companiesList = document.getElementById('companiesList');
+                    const companySelect = document.getElementById('contactCompanyId');
+
+                    // Update company selector in contact modal
+                    if (companySelect) {
+                        companySelect.innerHTML = '<option value="">-- Select Company --</option>';
+                        companies.forEach(company => {
+                            const option = document.createElement('option');
+                            option.value = company.id;
+                            option.text = company.name;
+                            companySelect.appendChild(option);
+                        });
+                    }
+
+                    // Display companies with expandable contact lists
+                    if (companiesList) {
+                        companiesList.innerHTML = companies.map(company => `
+                            <div class="company-item" style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 15px;">
+                                <div style="display: flex; justify-content: space-between; align-items: start;">
+                                    <div style="flex: 1;" onclick="toggleCompanyContacts(${company.id})">
+                                        <div style="font-size: 18px; font-weight: 600; color: #2d7a7a; cursor: pointer; display: flex; align-items: center; gap: 10px;">
+                                            <span id="company-arrow-${company.id}" style="transition: transform 0.2s;">▶</span>
+                                            ${company.name}
+                                        </div>
+                                        <div style="font-size: 13px; color: #666; margin-top: 5px;">
+                                            ${company.contact_count || 0} contact${company.contact_count !== 1 ? 's' : ''}
+                                            ${company.industry ? ' | ' + company.industry : ''}
+                                        </div>
+                                        ${company.website ? '<div style="font-size: 12px; color: #999; margin-top: 3px;">🌐 ' + company.website + '</div>' : ''}
+                                    </div>
+                                    <div style="display: flex; gap: 10px;">
+                                        <button onclick="event.stopPropagation(); openEditCompanyModal(${company.id})" style="padding: 8px 15px; font-size: 13px;">Edit</button>
+                                        <button onclick="event.stopPropagation(); deleteCompany(${company.id})" style="padding: 8px 15px; font-size: 13px; background: #ff4444;">Delete</button>
+                                    </div>
+                                </div>
+                                <div id="company-contacts-${company.id}" style="display: none; margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
+                                    <div class="loading">Loading contacts...</div>
+                                </div>
+                            </div>
+                        `).join('');
+                    }
+                })
+                .catch(err => console.error('Error loading companies:', err));
+        }
+
+        function toggleCompanyContacts(companyId) {
+            const contactsDiv = document.getElementById(`company-contacts-${companyId}`);
+            const arrow = document.getElementById(`company-arrow-${companyId}`);
+
+            if (contactsDiv.style.display === 'none') {
+                // Load and show contacts
+                contactsDiv.style.display = 'block';
+                arrow.style.transform = 'rotate(90deg)';
+
+                fetch(`${API_URL}/companies/${companyId}/contacts`)
+                    .then(r => r.json())
+                    .then(contacts => {
+                        if (contacts.length === 0) {
+                            contactsDiv.innerHTML = '<div style="color: #999; font-size: 13px; padding: 10px;">No contacts yet</div>';
+                        } else {
+                            contactsDiv.innerHTML = contacts.map(c => `
+                                <div class="contact-item" onclick="openEditContactModal(${c.id})" style="margin-bottom: 10px; padding: 12px; background: #f9f9f9; border-radius: 6px; cursor: pointer;">
+                                    <div style="font-weight: 600; color: #333; margin-bottom: 4px;">${c.name}</div>
+                                    <div style="font-size: 12px; color: #666;">${c.title || ''}</div>
+                                    <div style="font-size: 12px; color: #999; margin-top: 3px;">
+                                        ${c.email || ''} ${c.phone ? (c.email ? ' | ' : '') + c.phone : ''}
+                                    </div>
+                                </div>
+                            `).join('');
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error loading company contacts:', err);
+                        contactsDiv.innerHTML = '<div style="color: #ff4444; font-size: 13px;">Error loading contacts</div>';
+                    });
+            } else {
+                // Hide contacts
+                contactsDiv.style.display = 'none';
+                arrow.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        function openAddCompanyModal() {
+            currentEditingCompanyId = null;
+            document.getElementById('companyName').value = '';
+            document.getElementById('companyWebsite').value = '';
+            document.getElementById('companyIndustry').value = '';
+            document.getElementById('companyNotes').value = '';
+            document.querySelector('#companyModal .modal-header').textContent = 'Add Company';
+            document.getElementById('companyModal').classList.add('active');
+        }
+
+        function openEditCompanyModal(companyId) {
+            fetch(`${API_URL}/companies`)
+                .then(r => r.json())
+                .then(companies => {
+                    const company = companies.find(c => c.id === companyId);
+                    if (company) {
+                        currentEditingCompanyId = companyId;
+                        document.getElementById('companyName').value = company.name;
+                        document.getElementById('companyWebsite').value = company.website || '';
+                        document.getElementById('companyIndustry').value = company.industry || '';
+                        document.getElementById('companyNotes').value = company.notes || '';
+                        document.querySelector('#companyModal .modal-header').textContent = 'Edit Company';
+                        document.getElementById('companyModal').classList.add('active');
+                    }
+                });
+        }
+
+        function closeCompanyModal() {
+            document.getElementById('companyModal').classList.remove('active');
+            currentEditingCompanyId = null;
+        }
+
+        function saveCompany() {
+            const companyData = {
+                name: document.getElementById('companyName').value,
+                website: document.getElementById('companyWebsite').value,
+                industry: document.getElementById('companyIndustry').value,
+                notes: document.getElementById('companyNotes').value
+            };
+
+            if (!companyData.name) {
+                alert('Please enter a company name');
+                return;
+            }
+
+            const url = currentEditingCompanyId
+                ? `${API_URL}/companies/${currentEditingCompanyId}`
+                : `${API_URL}/companies`;
+
+            const method = currentEditingCompanyId ? 'PUT' : 'POST';
+
+            fetch(url, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(companyData)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(() => {
+                closeCompanyModal();
+                loadCompanies();
+                loadContacts(); // Reload contacts to update company dropdown
+            })
+            .catch(err => {
+                console.error('Error saving company:', err);
+                alert('Error saving company. Please try again.');
+            });
+        }
+
+        function deleteCompany(companyId) {
+            if (!confirm('Are you sure you want to delete this company? Associated contacts will not be deleted.')) {
+                return;
+            }
+
+            fetch(`${API_URL}/companies/${companyId}`, { method: 'DELETE' })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(() => {
+                    loadCompanies();
+                    loadContacts(); // Reload contacts to update company dropdown
+                })
+                .catch(err => {
+                    console.error('Error deleting company:', err);
+                    alert('Error deleting company. Please try again.');
+                });
+        }
+
+        // ========== CONTACTS FUNCTIONS ==========
         function loadContacts() {
             return fetch(`${API_URL}/contacts`)
                 .then(r => r.json())
                 .then(contacts => {
                     const contactsList = document.getElementById('contactsList');
                     const contactSelect = document.getElementById('oppContact');
-                    
+
                     contactSelect.innerHTML = '<option value="">Select Contact</option>';
-                    
+
+                    // Display contacts list
                     contactsList.innerHTML = contacts.map(c => `
                         <div class="contact-item" onclick="openEditContactModal(${c.id})">
                             <div class="contact-name">${c.name}</div>
-                            <div class="contact-info">${c.company || ''} ${c.title ? '| ' + c.title : ''}</div>
+                            <div class="contact-info">${c.company_name || c.company || ''} ${c.title ? '| ' + c.title : ''}</div>
                             <div class="contact-info">${c.email || ''} ${c.phone || ''}</div>
                             ${c.website ? '<div class="contact-info">🌐 ' + c.website + '</div>' : ''}
                         </div>
                     `).join('');
-                    
+
+                    // Group contacts by company for the dropdown
+                    const contactsByCompany = {};
+                    const contactsWithoutCompany = [];
+
                     contacts.forEach(c => {
-                        const option = document.createElement('option');
-                        option.value = c.id;
-                        option.text = c.name;
-                        contactSelect.appendChild(option);
+                        const companyName = c.company_name || c.company;
+                        if (companyName) {
+                            if (!contactsByCompany[companyName]) {
+                                contactsByCompany[companyName] = [];
+                            }
+                            contactsByCompany[companyName].push(c);
+                        } else {
+                            contactsWithoutCompany.push(c);
+                        }
+                    });
+
+                    // Add contacts without company first
+                    if (contactsWithoutCompany.length > 0) {
+                        const optgroup = document.createElement('optgroup');
+                        optgroup.label = '-- No Company --';
+                        contactsWithoutCompany.forEach(c => {
+                            const option = document.createElement('option');
+                            option.value = c.id;
+                            option.text = c.name;
+                            optgroup.appendChild(option);
+                        });
+                        contactSelect.appendChild(optgroup);
+                    }
+
+                    // Add contacts grouped by company
+                    Object.keys(contactsByCompany).sort().forEach(companyName => {
+                        const optgroup = document.createElement('optgroup');
+                        optgroup.label = companyName;
+                        contactsByCompany[companyName].forEach(c => {
+                            const option = document.createElement('option');
+                            option.value = c.id;
+                            option.text = c.name + (c.title ? ' (' + c.title + ')' : '');
+                            optgroup.appendChild(option);
+                        });
+                        contactSelect.appendChild(optgroup);
                     });
                 })
                 .catch(err => console.error('Error loading contacts:', err));
@@ -1863,6 +2133,7 @@
             document.getElementById('contactName').value = '';
             document.getElementById('contactEmail').value = '';
             document.getElementById('contactPhone').value = '';
+            document.getElementById('contactCompanyId').value = '';
             document.getElementById('contactCompany').value = '';
             document.getElementById('contactTitle').value = '';
             document.getElementById('contactWebsite').value = '';
@@ -1883,6 +2154,7 @@
                         document.getElementById('contactName').value = contact.name;
                         document.getElementById('contactEmail').value = contact.email || '';
                         document.getElementById('contactPhone').value = contact.phone || '';
+                        document.getElementById('contactCompanyId').value = contact.company_id || '';
                         document.getElementById('contactCompany').value = contact.company || '';
                         document.getElementById('contactTitle').value = contact.title || '';
                         document.getElementById('contactWebsite').value = contact.website || '';
@@ -1902,11 +2174,13 @@
         }
 
         function saveContact() {
+            const companyId = document.getElementById('contactCompanyId').value;
             const contactData = {
                 name: document.getElementById('contactName').value,
                 email: document.getElementById('contactEmail').value,
                 phone: document.getElementById('contactPhone').value,
                 company: document.getElementById('contactCompany').value,
+                company_id: companyId ? parseInt(companyId) : null,
                 title: document.getElementById('contactTitle').value,
                 website: document.getElementById('contactWebsite').value,
                 additional_info: document.getElementById('contactInfo').value
