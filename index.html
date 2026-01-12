@@ -1451,23 +1451,20 @@
                     stages[d.stage].value += d.value || 0;
                 }
             });
-            const maxValue = Math.max(...Object.values(stages).map(s => s.value), 1);
-            const pipelineHtml = stageOrder.map(stage => {
-                const data = stages[stage];
-                const width = (data.value / maxValue) * 100;
-                return `
-                    <div style="margin-bottom: 15px;">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                            <span style="font-weight: 600; color: #333;">${formatStageName(stage)}</span>
-                            <span style="color: #666; font-size: 12px;">${data.count} deals | ${formatCurrency(data.value)}</span>
-                        </div>
-                        <div style="background: #e5e7eb; height: 8px; border-radius: 4px; overflow: hidden;">
-                            <div style="background: linear-gradient(to right, #2d7a7a, #4a9999); height: 100%; width: ${width}%;"></div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-            document.getElementById('pipelineByStage').innerHTML = pipelineHtml || '<div class="empty-state">No open opportunities</div>';
+            // Create SVG funnel for dashboard
+            document.getElementById('pipelineByStage').innerHTML = `
+                <svg id="dashboardFunnelSVG" width="100%" height="350" viewBox="0 0 400 350"></svg>
+            `;
+
+            // Draw the funnel visualization
+            const dashboardStages = {};
+            stageOrder.forEach(stage => {
+                dashboardStages[stage] = {
+                    total_value: stages[stage].value,
+                    count: stages[stage].count
+                };
+            });
+            drawDashboardFunnel(dashboardStages, stageOrder);
             
             // Update forecast summary
             document.getElementById('forecastSummary').innerHTML = `
@@ -2758,6 +2755,70 @@
                 valueText.setAttribute('font-size', '13');
                 valueText.textContent = formatCurrency(stageData.total_value);
                 svg.appendChild(valueText);
+            });
+        }
+
+        function drawDashboardFunnel(stages, stageOrder) {
+            const svg = document.getElementById('dashboardFunnelSVG');
+            if (!svg) return;
+
+            svg.innerHTML = ''; // Clear existing
+
+            const width = 400;
+            const height = 350;
+            const funnelWidth = 300;
+            const funnelStartX = (width - funnelWidth) / 2;
+            const stageHeight = 70;
+            const spacing = 8;
+
+            stageOrder.forEach((stage, index) => {
+                const stageData = stages[stage] || { total_value: 0, count: 0 };
+
+                // Calculate trapezoid widths (narrowing from top to bottom)
+                const topWidth = funnelWidth - (index * 55);
+                const bottomWidth = funnelWidth - ((index + 1) * 55);
+                const yPos = index * (stageHeight + spacing);
+
+                // Center the trapezoid
+                const topX = funnelStartX + (funnelWidth - topWidth) / 2;
+                const bottomX = funnelStartX + (funnelWidth - bottomWidth) / 2;
+
+                // Draw trapezoid
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                const d = `
+                    M ${topX} ${yPos}
+                    L ${topX + topWidth} ${yPos}
+                    L ${bottomX + bottomWidth} ${yPos + stageHeight}
+                    L ${bottomX} ${yPos + stageHeight}
+                    Z
+                `;
+                path.setAttribute('d', d);
+                path.setAttribute('fill', getStageFunnelColor(stage));
+                path.setAttribute('stroke', '#fff');
+                path.setAttribute('stroke-width', '2');
+                path.setAttribute('opacity', '0.9');
+                svg.appendChild(path);
+
+                // Add stage name
+                const nameText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                nameText.setAttribute('x', width / 2);
+                nameText.setAttribute('y', yPos + 28);
+                nameText.setAttribute('text-anchor', 'middle');
+                nameText.setAttribute('fill', '#fff');
+                nameText.setAttribute('font-size', '15');
+                nameText.setAttribute('font-weight', 'bold');
+                nameText.textContent = formatStageName(stage);
+                svg.appendChild(nameText);
+
+                // Add deal count and value
+                const detailsText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                detailsText.setAttribute('x', width / 2);
+                detailsText.setAttribute('y', yPos + 48);
+                detailsText.setAttribute('text-anchor', 'middle');
+                detailsText.setAttribute('fill', '#fff');
+                detailsText.setAttribute('font-size', '13');
+                detailsText.textContent = `${stageData.count} deals | ${formatCurrency(stageData.total_value)}`;
+                svg.appendChild(detailsText);
             });
         }
 
