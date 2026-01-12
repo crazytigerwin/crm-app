@@ -282,11 +282,22 @@ def populate_skus():
     conn.close()
     print("SKUs populated successfully")
 
-print("Starting database initialization...")
-init_db()
-migrate_db()
-populate_skus()
-print("Database setup complete!")
+# Initialize database on first request
+db_initialized = False
+
+def ensure_db_initialized():
+    global db_initialized
+    if not db_initialized:
+        try:
+            print("Starting database initialization...")
+            init_db()
+            migrate_db()
+            populate_skus()
+            print("Database setup complete!")
+            db_initialized = True
+        except Exception as e:
+            print(f"Error initializing database: {e}")
+            raise
 
 # ==================== CONTACTS ENDPOINTS ====================
 
@@ -710,6 +721,7 @@ def get_pipeline_analytics():
 
 @app.route('/')
 def serve_index():
+    ensure_db_initialized()
     try:
         with open('index.html', 'r') as f:
             return f.read(), 200, {'Content-Type': 'text/html'}
