@@ -185,11 +185,11 @@ def migrate_db():
     # Ensure companies table exists (for old databases)
     if USE_POSTGRES:
         c.execute("""
-            SELECT COUNT(*) FROM information_schema.tables
+            SELECT COUNT(*) as count FROM information_schema.tables
             WHERE table_name = 'companies'
         """)
         result = c.fetchone()
-        companies_exists = result[0] > 0 if result else False
+        companies_exists = result['count'] > 0 if result else False
     else:
         c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='companies'")
         companies_exists = c.fetchone() is not None
