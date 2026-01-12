@@ -811,7 +811,6 @@
             <button class="tab-btn active" onclick="switchTab('dashboard')">Dashboard</button>
             <button class="tab-btn" onclick="switchTab('opportunities')">Opportunities</button>
             <button class="tab-btn" onclick="switchTab('pipeline')">Pipeline</button>
-            <button class="tab-btn" onclick="switchTab('activities')">Activities</button>
             <button class="tab-btn" onclick="switchTab('companies')">Companies</button>
             <button class="tab-btn" onclick="switchTab('contacts')">Contacts</button>
         </div>
@@ -1200,15 +1199,6 @@
             </div>
         </div>
 
-        <!-- ACTIVITIES TAB -->
-        <div id="activities" class="tab-content">
-            <div style="margin-bottom: 20px;">
-                <button onclick="openAddActivityModal()">+ Log Activity</button>
-            </div>
-
-            <div id="activitiesList"></div>
-        </div>
-
         <!-- Add Activity Modal - OUTSIDE TABS -->
         <div id="activityModal" class="modal">
             <div class="modal-content">
@@ -1405,8 +1395,6 @@
                 await loadContacts();
                 // Then load deals (this caches the data)
                 await loadDealsData();
-                // Then activities
-                await loadActivities();
                 // Then update UI with cached deals
                 updateDashboardWithDeals();
                 updateOpportunitiesTable();
@@ -2322,13 +2310,54 @@
                 <h4 style="margin-top: 20px; margin-bottom: 10px; color: #2d7a7a;">Next Steps</h4>
                 <div id="oppNextSteps" style="background: #e8f4f4; padding: 15px; border-radius: 4px; margin-bottom: 15px;"></div>
                 <h4 style="margin-top: 20px; margin-bottom: 10px; color: #2d7a7a;">Activities</h4>
-                <button onclick="openAddActivityFromOpp(${opp.id})" style="margin-bottom: 15px;">+ Add Activity</button>
+
+                <!-- Inline Activity Form -->
+                <div style="background: #f9f9f9; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e0e0e0;">
+                    <h5 style="margin: 0 0 15px 0; color: #2d7a7a;">Log New Activity</h5>
+                    <div style="display: grid; gap: 12px;">
+                        <div>
+                            <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px;">Activity Type *</label>
+                            <select id="inlineActivityType" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                <option value="">Select Type</option>
+                                <option value="Call">Call</option>
+                                <option value="Email">Email</option>
+                                <option value="Meeting">Meeting</option>
+                                <option value="Note">Note</option>
+                                <option value="Site Visit">Site Visit</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px;">Activity Date *</label>
+                            <input type="date" id="inlineActivityDate" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px;">Description</label>
+                            <textarea id="inlineActivityDescription" placeholder="What happened during this activity?" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-height: 80px;"></textarea>
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px;">Next Steps</label>
+                            <textarea id="inlineActivityNextSteps" placeholder="What needs to happen next?" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-height: 60px;"></textarea>
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px;">Next Step Due Date</label>
+                            <input type="date" id="inlineActivityDueDate" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                        <button onclick="saveInlineActivity(${opp.id})" style="padding: 10px 20px; background: #2d7a7a; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">
+                            Save Activity
+                        </button>
+                    </div>
+                </div>
+
                 <div id="oppActivitiesList"></div>
             `;
             
             document.getElementById('oppDetailTitle').textContent = opp.name || '(No Name)';
             document.getElementById('oppDetailContent').innerHTML = html;
             document.getElementById('oppDetailModal').currentOppId = opp.id;
+
+            // Set activity date to today
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('inlineActivityDate').value = today;
             
             // Load activities for this opp
             fetch(`${API_URL}/activities?deal_id=${opp.id}`)
@@ -2580,6 +2609,61 @@
                         openOppModal(oppId);
                     }
                 }
+            })
+            .catch(err => {
+                console.error('Error saving activity:', err);
+                alert('Error saving activity. Please try again.');
+            });
+        }
+
+        function saveInlineActivity(oppId) {
+            const type = document.getElementById('inlineActivityType').value;
+            const date = document.getElementById('inlineActivityDate').value;
+            const description = document.getElementById('inlineActivityDescription').value;
+
+            if (!type) {
+                alert('Please select an activity type');
+                return;
+            }
+
+            if (!date) {
+                alert('Please select an activity date');
+                return;
+            }
+
+            const activityData = {
+                deal_id: oppId,
+                type: type,
+                description: `[${date}] ${description}`,
+                next_steps: document.getElementById('inlineActivityNextSteps').value || null,
+                due_date: document.getElementById('inlineActivityDueDate').value || null
+            };
+
+            fetch(`${API_URL}/activities`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(activityData)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(() => {
+                // Clear the form
+                document.getElementById('inlineActivityType').value = '';
+                document.getElementById('inlineActivityDate').value = '';
+                document.getElementById('inlineActivityDescription').value = '';
+                document.getElementById('inlineActivityNextSteps').value = '';
+                document.getElementById('inlineActivityDueDate').value = '';
+
+                // Set date to today for next activity
+                const today = new Date().toISOString().split('T')[0];
+                document.getElementById('inlineActivityDate').value = today;
+
+                // Reload the opportunity detail modal to show new activity
+                openOppModal(oppId);
             })
             .catch(err => {
                 console.error('Error saving activity:', err);
