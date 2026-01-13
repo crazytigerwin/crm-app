@@ -3523,11 +3523,12 @@
                 // Add stage name
                 const nameText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                 nameText.setAttribute('x', width / 2);
-                nameText.setAttribute('y', yPos + 30);
+                nameText.setAttribute('y', yPos + 28);
                 nameText.setAttribute('text-anchor', 'middle');
                 nameText.setAttribute('fill', '#fff');
-                nameText.setAttribute('font-size', '16');
+                nameText.setAttribute('font-size', '18');
                 nameText.setAttribute('font-weight', 'bold');
+                nameText.setAttribute('style', 'text-shadow: 2px 2px 4px rgba(0,0,0,0.6);');
                 nameText.textContent = formatStageName(stage);
                 svg.appendChild(nameText);
 
@@ -3537,17 +3538,21 @@
                 countText.setAttribute('y', yPos + 50);
                 countText.setAttribute('text-anchor', 'middle');
                 countText.setAttribute('fill', '#fff');
-                countText.setAttribute('font-size', '14');
+                countText.setAttribute('font-size', '16');
+                countText.setAttribute('font-weight', '600');
+                countText.setAttribute('style', 'text-shadow: 2px 2px 4px rgba(0,0,0,0.6);');
                 countText.textContent = `${stageData.count} deals`;
                 svg.appendChild(countText);
 
                 // Add dollar amount
                 const valueText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                 valueText.setAttribute('x', width / 2);
-                valueText.setAttribute('y', yPos + 68);
+                valueText.setAttribute('y', yPos + 70);
                 valueText.setAttribute('text-anchor', 'middle');
                 valueText.setAttribute('fill', '#fff');
-                valueText.setAttribute('font-size', '13');
+                valueText.setAttribute('font-size', '17');
+                valueText.setAttribute('font-weight', 'bold');
+                valueText.setAttribute('style', 'text-shadow: 2px 2px 4px rgba(0,0,0,0.6);');
                 valueText.textContent = formatCurrency(stageData.total_value);
                 svg.appendChild(valueText);
             });
@@ -3597,11 +3602,12 @@
                 // Add stage name
                 const nameText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                 nameText.setAttribute('x', width / 2);
-                nameText.setAttribute('y', yPos + 28);
+                nameText.setAttribute('y', yPos + 26);
                 nameText.setAttribute('text-anchor', 'middle');
                 nameText.setAttribute('fill', '#fff');
-                nameText.setAttribute('font-size', '15');
+                nameText.setAttribute('font-size', '17');
                 nameText.setAttribute('font-weight', 'bold');
+                nameText.setAttribute('style', 'text-shadow: 2px 2px 4px rgba(0,0,0,0.6);');
                 nameText.textContent = formatStageName(stage);
                 svg.appendChild(nameText);
 
@@ -3611,7 +3617,9 @@
                 detailsText.setAttribute('y', yPos + 48);
                 detailsText.setAttribute('text-anchor', 'middle');
                 detailsText.setAttribute('fill', '#fff');
-                detailsText.setAttribute('font-size', '13');
+                detailsText.setAttribute('font-size', '15');
+                detailsText.setAttribute('font-weight', '600');
+                detailsText.setAttribute('style', 'text-shadow: 2px 2px 4px rgba(0,0,0,0.6);');
                 detailsText.textContent = `${stageData.count} deals | ${formatCurrency(stageData.total_value)}`;
                 svg.appendChild(detailsText);
             });
