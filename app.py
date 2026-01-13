@@ -1074,7 +1074,7 @@ def get_pipeline_analytics():
             total_weighted = sum(s['weighted_value'] for s in stages.values())
             total_deals = sum(s['count'] for s in stages.values())
 
-            # Group by expected close date (monthly)
+            # Group by expected close date (monthly) with SKU category breakdown
             monthly_forecast = {}
             for deal in deals:
                 close_date = deal['expected_close_date'] if 'expected_close_date' in deal.keys() else None
@@ -1084,11 +1084,49 @@ def get_pipeline_analytics():
                     month_key = 'No Date Set'
 
                 if month_key not in monthly_forecast:
-                    monthly_forecast[month_key] = {'total': 0, 'weighted': 0, 'count': 0}
+                    monthly_forecast[month_key] = {
+                        'total': 0,
+                        'weighted': 0,
+                        'count': 0,
+                        'categories': {
+                            'Fiber': {'total': 0, 'weighted': 0, 'count': 0},
+                            'Hurd': {'total': 0, 'weighted': 0, 'count': 0},
+                            'Insulation': {'total': 0, 'weighted': 0, 'count': 0},
+                            'Acoustic Panels': {'total': 0, 'weighted': 0, 'count': 0}
+                        }
+                    }
 
                 monthly_forecast[month_key]['total'] += deal['value'] or 0
                 monthly_forecast[month_key]['weighted'] += (deal['value'] or 0) * (deal['probability'] or 0) / 100
                 monthly_forecast[month_key]['count'] += 1
+
+                # Get SKUs for this deal and categorize
+                if USE_POSTGRES:
+                    c.execute('''SELECT s.* FROM skus s
+                                 INNER JOIN deal_skus ds ON s.id = ds.sku_id
+                                 WHERE ds.deal_id = %s''', (deal['id'],))
+                else:
+                    c.execute('''SELECT s.* FROM skus s
+                                 INNER JOIN deal_skus ds ON s.id = ds.sku_id
+                                 WHERE ds.deal_id = ?''', (deal['id'],))
+                deal_skus = c.fetchall()
+
+                # Track which categories this deal has
+                deal_categories = set()
+                for sku in deal_skus:
+                    category = dict(sku)['subcategory']
+                    if category in monthly_forecast[month_key]['categories']:
+                        deal_categories.add(category)
+
+                # Split deal value equally across categories if deal has SKUs
+                if deal_categories:
+                    value_per_category = (deal['value'] or 0) / len(deal_categories)
+                    weighted_per_category = ((deal['value'] or 0) * (deal['probability'] or 0) / 100) / len(deal_categories)
+
+                    for category in deal_categories:
+                        monthly_forecast[month_key]['categories'][category]['total'] += value_per_category
+                        monthly_forecast[month_key]['categories'][category]['weighted'] += weighted_per_category
+                        monthly_forecast[month_key]['categories'][category]['count'] += 1
 
             return {
                 'stages': stages,

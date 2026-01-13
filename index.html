@@ -1156,7 +1156,16 @@
                     <div id="pipelineFunnel"></div>
                 </div>
                 <div class="pipeline-forecast">
-                    <h3 style="margin-bottom: 20px; color: #2d7a7a;">Monthly Forecast</h3>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h3 style="margin: 0; color: #2d7a7a;">Monthly Forecast</h3>
+                        <select id="forecastCategoryFilter" onchange="filterMonthlyForecast()" style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+                            <option value="all">All Categories</option>
+                            <option value="Fiber">🌾 Fiber</option>
+                            <option value="Hurd">🪵 Hurd</option>
+                            <option value="Insulation">🏠 Insulation</option>
+                            <option value="Acoustic Panels">🔊 Acoustic Panels</option>
+                        </select>
+                    </div>
                     <div id="monthlyForecast"></div>
                 </div>
             </div>
@@ -3700,24 +3709,8 @@
                     // Now draw the funnel visualization (after SVG element exists)
                     drawPipelineFunnel(data.stages, stageOrder);
 
-                    // Render monthly forecast
-                    const sortedMonths = Object.keys(data.monthly_forecast).sort();
-                    const monthlyHtml = sortedMonths.map(month => {
-                        const monthData = data.monthly_forecast[month];
-                        return `
-                            <div class="forecast-month">
-                                <div class="forecast-month-header">
-                                    <span class="forecast-month-name">${formatMonthYear(month)}</span>
-                                    <span class="forecast-month-value">${formatCurrency(monthData.total)}</span>
-                                </div>
-                                <div style="font-size: 12px; color: #666;">
-                                    ${monthData.count} deals | Weighted: ${formatCurrency(monthData.weighted)}
-                                </div>
-                            </div>
-                        `;
-                    }).join('');
-
-                    document.getElementById('monthlyForecast').innerHTML = monthlyHtml || '<div class="empty-state">No expected close dates set</div>';
+                    // Render monthly forecast (initial render with all categories)
+                    filterMonthlyForecast();
 
                     // Initial render of deals
                     filterPipelineDeals();
@@ -3725,6 +3718,76 @@
                 .catch(err => {
                     console.error('Error loading pipeline analytics:', err);
                 });
+        }
+
+        function filterMonthlyForecast() {
+            if (!pipelineData || !pipelineData.monthly_forecast) return;
+
+            const categoryFilter = document.getElementById('forecastCategoryFilter').value;
+            const sortedMonths = Object.keys(pipelineData.monthly_forecast).sort();
+
+            const monthlyHtml = sortedMonths.map(month => {
+                const monthData = pipelineData.monthly_forecast[month];
+
+                // Determine what values to display based on filter
+                let displayTotal, displayWeighted, displayCount;
+
+                if (categoryFilter === 'all') {
+                    displayTotal = monthData.total;
+                    displayWeighted = monthData.weighted;
+                    displayCount = monthData.count;
+                } else {
+                    // Show category-specific data
+                    const categoryData = monthData.categories[categoryFilter];
+                    displayTotal = categoryData.total;
+                    displayWeighted = categoryData.weighted;
+                    displayCount = categoryData.count;
+                }
+
+                // Skip months with no data for the selected category
+                if (displayCount === 0 && categoryFilter !== 'all') return '';
+
+                // Build category breakdown HTML if showing all categories
+                let categoryBreakdown = '';
+                if (categoryFilter === 'all' && monthData.categories) {
+                    const categories = [
+                        { name: 'Fiber', icon: '🌾', key: 'Fiber' },
+                        { name: 'Hurd', icon: '🪵', key: 'Hurd' },
+                        { name: 'Insulation', icon: '🏠', key: 'Insulation' },
+                        { name: 'Acoustic Panels', icon: '🔊', key: 'Acoustic Panels' }
+                    ];
+
+                    const categoryItems = categories
+                        .filter(cat => monthData.categories[cat.key].count > 0)
+                        .map(cat => {
+                            const catData = monthData.categories[cat.key];
+                            return `<div style="font-size: 11px; color: #666; margin-left: 15px;">
+                                ${cat.icon} ${cat.name}: ${formatCurrency(catData.total)} (${catData.count} deal${catData.count !== 1 ? 's' : ''})
+                            </div>`;
+                        }).join('');
+
+                    if (categoryItems) {
+                        categoryBreakdown = `<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #eee;">
+                            ${categoryItems}
+                        </div>`;
+                    }
+                }
+
+                return `
+                    <div class="forecast-month">
+                        <div class="forecast-month-header">
+                            <span class="forecast-month-name">${formatMonthYear(month)}</span>
+                            <span class="forecast-month-value">${formatCurrency(displayTotal)}</span>
+                        </div>
+                        <div style="font-size: 12px; color: #666;">
+                            ${displayCount} deal${displayCount !== 1 ? 's' : ''} | Weighted: ${formatCurrency(displayWeighted)}
+                        </div>
+                        ${categoryBreakdown}
+                    </div>
+                `;
+            }).join('');
+
+            document.getElementById('monthlyForecast').innerHTML = monthlyHtml || '<div class="empty-state">No expected close dates set</div>';
         }
 
         function filterPipelineDeals() {
