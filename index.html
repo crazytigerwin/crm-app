@@ -507,13 +507,17 @@
 
         .sku-tag {
             display: inline-block;
-            background: #e07856;
+            background: linear-gradient(135deg, #2d7a7a 0%, #3a9999 100%);
             color: white;
-            padding: 4px 8px;
-            border-radius: 3px;
-            margin-right: 5px;
-            margin-bottom: 5px;
-            font-size: 11px;
+            padding: 6px 12px;
+            border-radius: 6px;
+            margin-right: 6px;
+            margin-bottom: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+            border: 1px solid rgba(255,255,255,0.2);
+            letter-spacing: 0.3px;
         }
 
         /* Pipeline Styles */
@@ -1660,7 +1664,7 @@
             });
             // Create SVG funnel for dashboard
             document.getElementById('pipelineByStage').innerHTML = `
-                <svg id="dashboardFunnelSVG" width="100%" height="350" viewBox="0 0 400 350"></svg>
+                <svg id="dashboardFunnelSVG" width="100%" height="380" viewBox="0 0 420 380"></svg>
             `;
 
             // Draw the funnel visualization
@@ -1734,7 +1738,7 @@
                     <td>${formatCurrency(d.value)}</td>
                     <td><span class="${getProbabilityColor(d.probability)}">${d.probability || 0}%</span></td>
                     <td>${formatDate(d.expected_close_date)}</td>
-                    <td style="font-size: 11px;">${(d.skus || []).map(s => formatSkuDisplay(s)).join(', ')}</td>
+                    <td style="max-width: 250px;">${(d.skus || []).map(s => `<span class="sku-tag" style="font-size: 10px; padding: 3px 8px;">${formatSkuDisplay(s)}</span>`).join('')}</td>
                 </tr>
             `).join('') || '<tr><td colspan="6" class="empty-state">No opportunities yet</td></tr>';
         }
@@ -1751,7 +1755,7 @@
                     <td>${formatCurrency(d.value)}</td>
                     <td><span class="${getProbabilityColor(d.probability)}">${d.probability || 0}%</span></td>
                     <td>${formatDate(d.expected_close_date)}</td>
-                    <td>${(d.skus || []).map(s => `<div style="font-size: 11px;">${formatSkuDisplay(s)}</div>`).join('')}</td>
+                    <td style="max-width: 280px;">${(d.skus || []).map(s => `<span class="sku-tag" style="font-size: 10px; padding: 3px 8px;">${formatSkuDisplay(s)}</span>`).join('')}</td>
                     <td><button onclick="deleteOpportunity(${d.id})">Delete</button></td>
                 </tr>
             `).join('') || '<tr><td colspan="8" class="empty-state">No opportunities yet</td></tr>';
@@ -1804,8 +1808,15 @@
         }
 
         function formatSkuDisplay(sku) {
-            // Format: "Subcategory - Size/Name"
-            return `${sku.subcategory} - ${sku.name}`;
+            // Format SKU name more professionally
+            const categoryIcon = {
+                'Fiber': '🌾',
+                'Hurd': '🪵',
+                'Insulation': '🏠',
+                'Acoustic Panels': '🔊'
+            };
+            const icon = categoryIcon[sku.subcategory] || '📦';
+            return `${icon} ${sku.name}`;
         }
 
         function formatDate(dateStr) {
@@ -3485,12 +3496,101 @@
 
             svg.innerHTML = ''; // Clear existing
 
-            const width = 400;
-            const height = 400;
-            const funnelWidth = 320;
+            const width = 450;
+            const height = 440;
+            const funnelWidth = 360;
             const funnelStartX = (width - funnelWidth) / 2;
-            const stageHeight = 80;
-            const spacing = 10;
+            const stageHeight = 95;
+            const spacing = 5;
+
+            stageOrder.forEach((stage, index) => {
+                const stageData = stages[stage] || { total_value: 0, count: 0 };
+
+                // Calculate trapezoid widths (narrowing from top to bottom)
+                const topWidth = funnelWidth - (index * 65);
+                const bottomWidth = funnelWidth - ((index + 1) * 65);
+                const yPos = index * (stageHeight + spacing);
+
+                // Center the trapezoid
+                const topX = funnelStartX + (funnelWidth - topWidth) / 2;
+                const bottomX = funnelStartX + (funnelWidth - bottomWidth) / 2;
+
+                // Draw semi-transparent background box for better text readability
+                const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                bgRect.setAttribute('x', bottomX + 10);
+                bgRect.setAttribute('y', yPos + 15);
+                bgRect.setAttribute('width', bottomWidth - 20);
+                bgRect.setAttribute('height', stageHeight - 30);
+                bgRect.setAttribute('fill', 'rgba(0, 0, 0, 0.25)');
+                bgRect.setAttribute('rx', '8');
+                svg.appendChild(bgRect);
+
+                // Draw trapezoid
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                const d = `
+                    M ${topX} ${yPos}
+                    L ${topX + topWidth} ${yPos}
+                    L ${bottomX + bottomWidth} ${yPos + stageHeight}
+                    L ${bottomX} ${yPos + stageHeight}
+                    Z
+                `;
+                path.setAttribute('d', d);
+                path.setAttribute('fill', getStageFunnelColor(stage));
+                path.setAttribute('stroke', '#fff');
+                path.setAttribute('stroke-width', '3');
+                path.setAttribute('opacity', '0.85');
+                svg.appendChild(path);
+
+                // Add stage name
+                const nameText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                nameText.setAttribute('x', width / 2);
+                nameText.setAttribute('y', yPos + 35);
+                nameText.setAttribute('text-anchor', 'middle');
+                nameText.setAttribute('fill', '#fff');
+                nameText.setAttribute('font-size', '20');
+                nameText.setAttribute('font-weight', 'bold');
+                nameText.setAttribute('style', 'text-shadow: 3px 3px 6px rgba(0,0,0,0.8), 0 0 10px rgba(0,0,0,0.5);');
+                nameText.textContent = formatStageName(stage);
+                svg.appendChild(nameText);
+
+                // Add deal count
+                const countText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                countText.setAttribute('x', width / 2);
+                countText.setAttribute('y', yPos + 60);
+                countText.setAttribute('text-anchor', 'middle');
+                countText.setAttribute('fill', '#fff');
+                countText.setAttribute('font-size', '17');
+                countText.setAttribute('font-weight', '600');
+                countText.setAttribute('style', 'text-shadow: 2px 2px 5px rgba(0,0,0,0.8);');
+                countText.textContent = `${stageData.count} deal${stageData.count !== 1 ? 's' : ''}`;
+                svg.appendChild(countText);
+
+                // Add dollar amount
+                const valueText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                valueText.setAttribute('x', width / 2);
+                valueText.setAttribute('y', yPos + 82);
+                valueText.setAttribute('text-anchor', 'middle');
+                valueText.setAttribute('fill', '#fff');
+                valueText.setAttribute('font-size', '19');
+                valueText.setAttribute('font-weight', 'bold');
+                valueText.setAttribute('style', 'text-shadow: 3px 3px 6px rgba(0,0,0,0.8), 0 0 10px rgba(0,0,0,0.5);');
+                valueText.textContent = formatCurrency(stageData.total_value);
+                svg.appendChild(valueText);
+            });
+        }
+
+        function drawDashboardFunnel(stages, stageOrder) {
+            const svg = document.getElementById('dashboardFunnelSVG');
+            if (!svg) return;
+
+            svg.innerHTML = ''; // Clear existing
+
+            const width = 420;
+            const height = 380;
+            const funnelWidth = 340;
+            const funnelStartX = (width - funnelWidth) / 2;
+            const stageHeight = 85;
+            const spacing = 5;
 
             stageOrder.forEach((stage, index) => {
                 const stageData = stages[stage] || { total_value: 0, count: 0 };
@@ -3504,84 +3604,15 @@
                 const topX = funnelStartX + (funnelWidth - topWidth) / 2;
                 const bottomX = funnelStartX + (funnelWidth - bottomWidth) / 2;
 
-                // Draw trapezoid
-                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                const d = `
-                    M ${topX} ${yPos}
-                    L ${topX + topWidth} ${yPos}
-                    L ${bottomX + bottomWidth} ${yPos + stageHeight}
-                    L ${bottomX} ${yPos + stageHeight}
-                    Z
-                `;
-                path.setAttribute('d', d);
-                path.setAttribute('fill', getStageFunnelColor(stage));
-                path.setAttribute('stroke', '#fff');
-                path.setAttribute('stroke-width', '2');
-                path.setAttribute('opacity', '0.9');
-                svg.appendChild(path);
-
-                // Add stage name
-                const nameText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                nameText.setAttribute('x', width / 2);
-                nameText.setAttribute('y', yPos + 28);
-                nameText.setAttribute('text-anchor', 'middle');
-                nameText.setAttribute('fill', '#fff');
-                nameText.setAttribute('font-size', '18');
-                nameText.setAttribute('font-weight', 'bold');
-                nameText.setAttribute('style', 'text-shadow: 2px 2px 4px rgba(0,0,0,0.6);');
-                nameText.textContent = formatStageName(stage);
-                svg.appendChild(nameText);
-
-                // Add deal count
-                const countText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                countText.setAttribute('x', width / 2);
-                countText.setAttribute('y', yPos + 50);
-                countText.setAttribute('text-anchor', 'middle');
-                countText.setAttribute('fill', '#fff');
-                countText.setAttribute('font-size', '16');
-                countText.setAttribute('font-weight', '600');
-                countText.setAttribute('style', 'text-shadow: 2px 2px 4px rgba(0,0,0,0.6);');
-                countText.textContent = `${stageData.count} deals`;
-                svg.appendChild(countText);
-
-                // Add dollar amount
-                const valueText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                valueText.setAttribute('x', width / 2);
-                valueText.setAttribute('y', yPos + 70);
-                valueText.setAttribute('text-anchor', 'middle');
-                valueText.setAttribute('fill', '#fff');
-                valueText.setAttribute('font-size', '17');
-                valueText.setAttribute('font-weight', 'bold');
-                valueText.setAttribute('style', 'text-shadow: 2px 2px 4px rgba(0,0,0,0.6);');
-                valueText.textContent = formatCurrency(stageData.total_value);
-                svg.appendChild(valueText);
-            });
-        }
-
-        function drawDashboardFunnel(stages, stageOrder) {
-            const svg = document.getElementById('dashboardFunnelSVG');
-            if (!svg) return;
-
-            svg.innerHTML = ''; // Clear existing
-
-            const width = 400;
-            const height = 350;
-            const funnelWidth = 300;
-            const funnelStartX = (width - funnelWidth) / 2;
-            const stageHeight = 70;
-            const spacing = 8;
-
-            stageOrder.forEach((stage, index) => {
-                const stageData = stages[stage] || { total_value: 0, count: 0 };
-
-                // Calculate trapezoid widths (narrowing from top to bottom)
-                const topWidth = funnelWidth - (index * 55);
-                const bottomWidth = funnelWidth - ((index + 1) * 55);
-                const yPos = index * (stageHeight + spacing);
-
-                // Center the trapezoid
-                const topX = funnelStartX + (funnelWidth - topWidth) / 2;
-                const bottomX = funnelStartX + (funnelWidth - bottomWidth) / 2;
+                // Draw semi-transparent background box for better text readability
+                const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                bgRect.setAttribute('x', bottomX + 10);
+                bgRect.setAttribute('y', yPos + 12);
+                bgRect.setAttribute('width', bottomWidth - 20);
+                bgRect.setAttribute('height', stageHeight - 24);
+                bgRect.setAttribute('fill', 'rgba(0, 0, 0, 0.25)');
+                bgRect.setAttribute('rx', '8');
+                svg.appendChild(bgRect);
 
                 // Draw trapezoid
                 const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -3595,32 +3626,32 @@
                 path.setAttribute('d', d);
                 path.setAttribute('fill', getStageFunnelColor(stage));
                 path.setAttribute('stroke', '#fff');
-                path.setAttribute('stroke-width', '2');
-                path.setAttribute('opacity', '0.9');
+                path.setAttribute('stroke-width', '3');
+                path.setAttribute('opacity', '0.85');
                 svg.appendChild(path);
 
                 // Add stage name
                 const nameText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                 nameText.setAttribute('x', width / 2);
-                nameText.setAttribute('y', yPos + 26);
+                nameText.setAttribute('y', yPos + 32);
                 nameText.setAttribute('text-anchor', 'middle');
                 nameText.setAttribute('fill', '#fff');
-                nameText.setAttribute('font-size', '17');
+                nameText.setAttribute('font-size', '19');
                 nameText.setAttribute('font-weight', 'bold');
-                nameText.setAttribute('style', 'text-shadow: 2px 2px 4px rgba(0,0,0,0.6);');
+                nameText.setAttribute('style', 'text-shadow: 3px 3px 6px rgba(0,0,0,0.8), 0 0 10px rgba(0,0,0,0.5);');
                 nameText.textContent = formatStageName(stage);
                 svg.appendChild(nameText);
 
                 // Add deal count and value
                 const detailsText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                 detailsText.setAttribute('x', width / 2);
-                detailsText.setAttribute('y', yPos + 48);
+                detailsText.setAttribute('y', yPos + 58);
                 detailsText.setAttribute('text-anchor', 'middle');
                 detailsText.setAttribute('fill', '#fff');
-                detailsText.setAttribute('font-size', '15');
+                detailsText.setAttribute('font-size', '16');
                 detailsText.setAttribute('font-weight', '600');
-                detailsText.setAttribute('style', 'text-shadow: 2px 2px 4px rgba(0,0,0,0.6);');
-                detailsText.textContent = `${stageData.count} deals | ${formatCurrency(stageData.total_value)}`;
+                detailsText.setAttribute('style', 'text-shadow: 2px 2px 5px rgba(0,0,0,0.8);');
+                detailsText.textContent = `${stageData.count} deal${stageData.count !== 1 ? 's' : ''} | ${formatCurrency(stageData.total_value)}`;
                 svg.appendChild(detailsText);
             });
         }
@@ -3660,7 +3691,7 @@
 
                     // Create the SVG container first
                     document.getElementById('pipelineFunnel').innerHTML = `
-                        <svg id="funnelSVG" width="100%" height="400" viewBox="0 0 400 400"></svg>
+                        <svg id="funnelSVG" width="100%" height="440" viewBox="0 0 450 440"></svg>
                         <div style="margin-top: 20px;">
                             ${metricsHtml}
                         </div>
