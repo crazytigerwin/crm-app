@@ -152,6 +152,41 @@ def init_db():
         FOREIGN KEY(contact_id) REFERENCES contacts(id)
     )''')
 
+    # Tasks table - standalone tasks not tied to deals
+    c.execute(f'''CREATE TABLE IF NOT EXISTS tasks (
+        id {pk_type},
+        name TEXT NOT NULL,
+        detail TEXT,
+        due_date DATE,
+        completed BOOLEAN DEFAULT FALSE,
+        priority TEXT,
+        category TEXT,
+        assignee TEXT,
+        recurring TEXT,
+        created_at TIMESTAMP {timestamp_default}
+    )''')
+
+    # Documents table - file uploads and external links
+    c.execute(f'''CREATE TABLE IF NOT EXISTS documents (
+        id {pk_type},
+        name TEXT NOT NULL,
+        description TEXT,
+        file_path TEXT,
+        external_link TEXT,
+        file_size INTEGER,
+        file_type TEXT,
+        document_category TEXT,
+        version TEXT,
+        expiration_date DATE,
+        tags TEXT,
+        company_id INTEGER,
+        deal_id INTEGER,
+        uploaded_by TEXT,
+        created_at TIMESTAMP {timestamp_default},
+        FOREIGN KEY(company_id) REFERENCES companies(id),
+        FOREIGN KEY(deal_id) REFERENCES deals(id)
+    )''')
+
     # Settings table for annual goal and other configuration
     c.execute(f'''CREATE TABLE IF NOT EXISTS settings (
         id {pk_type},
@@ -1175,6 +1210,166 @@ def get_goal_progress():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
+# ==================== TASKS ENDPOINTS ====================
+
+@app.route('/api/tasks', methods=['GET'])
+def get_tasks():
+    def do_get():
+        conn = get_db()
+        try:
+            c = conn.cursor()
+            # Get all tasks, ordered by due date and priority
+            c.execute('''
+                SELECT * FROM tasks
+                ORDER BY completed ASC, due_date ASC,
+                CASE priority
+                    WHEN 'High' THEN 1
+                    WHEN 'Medium' THEN 2
+                    WHEN 'Low' THEN 3
+                    ELSE 4
+                END
+            ''')
+            tasks = c.fetchall()
+            return [dict(task) for task in tasks]
+        finally:
+            conn.close()
+
+    try:
+        tasks = execute_with_retry(do_get)
+        return jsonify(tasks)
+    except Exception as e:
+        print(f"Error in get_tasks: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/tasks', methods=['POST'])
+def add_task():
+    def do_add():
+        data = request.json
+        conn = get_db()
+        try:
+            c = conn.cursor()
+            if USE_POSTGRES:
+                c.execute('''INSERT INTO tasks (name, detail, due_date, completed, priority, category, assignee, recurring)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id''',
+                         (data.get('name'), data.get('detail'), data.get('due_date'),
+                          data.get('completed', False), data.get('priority'), data.get('category'),
+                          data.get('assignee'), data.get('recurring')))
+                task_id = c.fetchone()['id']
+            else:
+                c.execute('''INSERT INTO tasks (name, detail, due_date, completed, priority, category, assignee, recurring)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                         (data.get('name'), data.get('detail'), data.get('due_date'),
+                          data.get('completed', False), data.get('priority'), data.get('category'),
+                          data.get('assignee'), data.get('recurring')))
+                task_id = c.lastrowid
+            conn.commit()
+            return task_id
+        finally:
+            conn.close()
+
+    try:
+        task_id = execute_with_retry(do_add)
+        return jsonify({'id': task_id}), 201
+    except Exception as e:
+        print(f"Error in add_task: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/tasks/<int:task_id>', methods=['PUT'])
+def update_task(task_id):
+    def do_update():
+        data = request.json
+        conn = get_db()
+        try:
+            c = conn.cursor()
+            if USE_POSTGRES:
+                c.execute('''UPDATE tasks
+                            SET name=%s, detail=%s, due_date=%s, completed=%s, priority=%s, category=%s, assignee=%s, recurring=%s
+                            WHERE id=%s''',
+                         (data.get('name'), data.get('detail'), data.get('due_date'),
+                          data.get('completed'), data.get('priority'), data.get('category'),
+                          data.get('assignee'), data.get('recurring'), task_id))
+            else:
+                c.execute('''UPDATE tasks
+                            SET name=?, detail=?, due_date=?, completed=?, priority=?, category=?, assignee=?, recurring=?
+                            WHERE id=?''',
+                         (data.get('name'), data.get('detail'), data.get('due_date'),
+                          data.get('completed'), data.get('priority'), data.get('category'),
+                          data.get('assignee'), data.get('recurring'), task_id))
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+    try:
+        execute_with_retry(do_update)
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error in update_task: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/tasks/<int:task_id>/complete', methods=['PATCH'])
+def toggle_task_complete(task_id):
+    def do_toggle():
+        conn = get_db()
+        try:
+            c = conn.cursor()
+            # Get current completed status
+            if USE_POSTGRES:
+                c.execute('SELECT completed FROM tasks WHERE id = %s', (task_id,))
+            else:
+                c.execute('SELECT completed FROM tasks WHERE id = ?', (task_id,))
+            result = c.fetchone()
+            if not result:
+                return None
+
+            new_status = not result['completed']
+
+            # Update completed status
+            if USE_POSTGRES:
+                c.execute('UPDATE tasks SET completed = %s WHERE id = %s', (new_status, task_id))
+            else:
+                c.execute('UPDATE tasks SET completed = ? WHERE id = ?', (new_status, task_id))
+            conn.commit()
+            return new_status
+        finally:
+            conn.close()
+
+    try:
+        new_status = execute_with_retry(do_toggle)
+        if new_status is None:
+            return jsonify({'error': 'Task not found'}), 404
+        return jsonify({'success': True, 'completed': new_status})
+    except Exception as e:
+        print(f"Error in toggle_task_complete: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/tasks/<int:task_id>', methods=['DELETE'])
+def delete_task(task_id):
+    def do_delete():
+        conn = get_db()
+        try:
+            c = conn.cursor()
+            if USE_POSTGRES:
+                c.execute('DELETE FROM tasks WHERE id=%s', (task_id,))
+            else:
+                c.execute('DELETE FROM tasks WHERE id=?', (task_id,))
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+    try:
+        execute_with_retry(do_delete)
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error in delete_task: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/tasks/this-week', methods=['GET'])
 def get_tasks_this_week():
     def do_get():
@@ -1190,10 +1385,10 @@ def get_tasks_this_week():
             # Find Sunday of current week
             sunday = monday + timedelta(days=6)
 
-            # Query activities with due dates in current week
+            # Query next steps (activities with due dates in current week)
             if USE_POSTGRES:
                 c.execute('''
-                    SELECT a.*, d.name as deal_name, c.name as contact_name
+                    SELECT a.*, d.name as deal_name, c.name as contact_name, 'next_step' as item_type
                     FROM activities a
                     LEFT JOIN deals d ON a.deal_id = d.id
                     LEFT JOIN contacts c ON a.contact_id = c.id
@@ -1202,7 +1397,7 @@ def get_tasks_this_week():
                 ''', (str(monday), str(sunday)))
             else:
                 c.execute('''
-                    SELECT a.*, d.name as deal_name, c.name as contact_name
+                    SELECT a.*, d.name as deal_name, c.name as contact_name, 'next_step' as item_type
                     FROM activities a
                     LEFT JOIN deals d ON a.deal_id = d.id
                     LEFT JOIN contacts c ON a.contact_id = c.id
@@ -1210,16 +1405,264 @@ def get_tasks_this_week():
                     ORDER BY a.due_date ASC, a.created_at DESC
                 ''', (str(monday), str(sunday)))
 
-            tasks = c.fetchall()
-            return [dict(task) for task in tasks]
+            next_steps = [dict(row) for row in c.fetchall()]
+
+            # Query standalone tasks with due dates in current week (exclude completed)
+            if USE_POSTGRES:
+                c.execute('''
+                    SELECT *, 'task' as item_type
+                    FROM tasks
+                    WHERE due_date >= %s AND due_date <= %s AND completed = FALSE
+                    ORDER BY due_date ASC,
+                    CASE priority
+                        WHEN 'High' THEN 1
+                        WHEN 'Medium' THEN 2
+                        WHEN 'Low' THEN 3
+                        ELSE 4
+                    END
+                ''', (str(monday), str(sunday)))
+            else:
+                c.execute('''
+                    SELECT *, 'task' as item_type
+                    FROM tasks
+                    WHERE due_date >= ? AND due_date <= ? AND completed = 0
+                    ORDER BY due_date ASC,
+                    CASE priority
+                        WHEN 'High' THEN 1
+                        WHEN 'Medium' THEN 2
+                        WHEN 'Low' THEN 3
+                        ELSE 4
+                    END
+                ''', (str(monday), str(sunday)))
+
+            tasks = [dict(row) for row in c.fetchall()]
+
+            # Combine both lists and sort by due_date
+            combined = next_steps + tasks
+            combined.sort(key=lambda x: (x.get('due_date') or '9999-12-31',
+                                        0 if x.get('priority') == 'High' else
+                                        1 if x.get('priority') == 'Medium' else
+                                        2 if x.get('priority') == 'Low' else 3))
+
+            return combined
         finally:
             conn.close()
 
     try:
-        tasks = execute_with_retry(do_get)
-        return jsonify(tasks)
+        items = execute_with_retry(do_get)
+        return jsonify(items)
     except Exception as e:
         print(f"Error in get_tasks_this_week: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+# ==================== DOCUMENTS ENDPOINTS ====================
+
+@app.route('/api/documents', methods=['GET'])
+def get_documents():
+    def do_get():
+        conn = get_db()
+        try:
+            c = conn.cursor()
+            # Get all documents with associated entity names
+            c.execute('''
+                SELECT d.*,
+                       co.name as company_name,
+                       de.name as deal_name
+                FROM documents d
+                LEFT JOIN companies co ON d.company_id = co.id
+                LEFT JOIN deals de ON d.deal_id = de.id
+                ORDER BY d.created_at DESC
+            ''')
+            documents = c.fetchall()
+            return [dict(doc) for doc in documents]
+        finally:
+            conn.close()
+
+    try:
+        documents = execute_with_retry(do_get)
+        return jsonify(documents)
+    except Exception as e:
+        print(f"Error in get_documents: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/documents', methods=['POST'])
+def add_document():
+    def do_add():
+        from werkzeug.utils import secure_filename
+        import os
+
+        # Check if this is a file upload or external link
+        if 'file' in request.files and request.files['file'].filename:
+            # Handle file upload
+            file = request.files['file']
+            filename = secure_filename(file.filename)
+
+            # Create uploads directory if it doesn't exist
+            upload_dir = 'uploads'
+            if not os.path.exists(upload_dir):
+                os.makedirs(upload_dir)
+
+            # Save file with timestamp to avoid conflicts
+            timestamp = int(time.time())
+            file_path = os.path.join(upload_dir, f"{timestamp}_{filename}")
+            file.save(file_path)
+
+            file_size = os.path.getsize(file_path)
+            file_type = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
+
+            # Get other form data
+            data = request.form
+            external_link = None
+        else:
+            # Handle external link
+            data = request.json if request.is_json else request.form
+            file_path = None
+            external_link = data.get('external_link')
+            file_size = None
+            file_type = None
+
+        conn = get_db()
+        try:
+            c = conn.cursor()
+            if USE_POSTGRES:
+                c.execute('''INSERT INTO documents
+                            (name, description, file_path, external_link, file_size, file_type,
+                             document_category, version, expiration_date, tags, company_id, deal_id, uploaded_by)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id''',
+                         (data.get('name'), data.get('description'), file_path, external_link,
+                          file_size, file_type, data.get('document_category'), data.get('version'),
+                          data.get('expiration_date'), data.get('tags'),
+                          data.get('company_id') or None, data.get('deal_id') or None,
+                          data.get('uploaded_by')))
+                doc_id = c.fetchone()['id']
+            else:
+                c.execute('''INSERT INTO documents
+                            (name, description, file_path, external_link, file_size, file_type,
+                             document_category, version, expiration_date, tags, company_id, deal_id, uploaded_by)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                         (data.get('name'), data.get('description'), file_path, external_link,
+                          file_size, file_type, data.get('document_category'), data.get('version'),
+                          data.get('expiration_date'), data.get('tags'),
+                          data.get('company_id') or None, data.get('deal_id') or None,
+                          data.get('uploaded_by')))
+                doc_id = c.lastrowid
+            conn.commit()
+            return doc_id
+        finally:
+            conn.close()
+
+    try:
+        doc_id = execute_with_retry(do_add)
+        return jsonify({'id': doc_id}), 201
+    except Exception as e:
+        print(f"Error in add_document: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/documents/<int:doc_id>', methods=['PUT'])
+def update_document(doc_id):
+    def do_update():
+        data = request.json if request.is_json else request.form
+        conn = get_db()
+        try:
+            c = conn.cursor()
+            if USE_POSTGRES:
+                c.execute('''UPDATE documents
+                            SET name=%s, description=%s, document_category=%s, version=%s,
+                                expiration_date=%s, tags=%s, company_id=%s, deal_id=%s, external_link=%s
+                            WHERE id=%s''',
+                         (data.get('name'), data.get('description'), data.get('document_category'),
+                          data.get('version'), data.get('expiration_date'), data.get('tags'),
+                          data.get('company_id') or None, data.get('deal_id') or None,
+                          data.get('external_link'), doc_id))
+            else:
+                c.execute('''UPDATE documents
+                            SET name=?, description=?, document_category=?, version=?,
+                                expiration_date=?, tags=?, company_id=?, deal_id=?, external_link=?
+                            WHERE id=?''',
+                         (data.get('name'), data.get('description'), data.get('document_category'),
+                          data.get('version'), data.get('expiration_date'), data.get('tags'),
+                          data.get('company_id') or None, data.get('deal_id') or None,
+                          data.get('external_link'), doc_id))
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+    try:
+        execute_with_retry(do_update)
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error in update_document: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/documents/<int:doc_id>', methods=['DELETE'])
+def delete_document(doc_id):
+    def do_delete():
+        import os
+        conn = get_db()
+        try:
+            c = conn.cursor()
+            # Get file path before deleting
+            if USE_POSTGRES:
+                c.execute('SELECT file_path FROM documents WHERE id = %s', (doc_id,))
+            else:
+                c.execute('SELECT file_path FROM documents WHERE id = ?', (doc_id,))
+            result = c.fetchone()
+
+            if result and result['file_path']:
+                # Delete physical file if it exists
+                file_path = result['file_path']
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+
+            # Delete database record
+            if USE_POSTGRES:
+                c.execute('DELETE FROM documents WHERE id=%s', (doc_id,))
+            else:
+                c.execute('DELETE FROM documents WHERE id=?', (doc_id,))
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+    try:
+        execute_with_retry(do_delete)
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Error in delete_document: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/documents/<int:doc_id>/download', methods=['GET'])
+def download_document(doc_id):
+    def do_get():
+        conn = get_db()
+        try:
+            c = conn.cursor()
+            if USE_POSTGRES:
+                c.execute('SELECT file_path, name FROM documents WHERE id = %s', (doc_id,))
+            else:
+                c.execute('SELECT file_path, name FROM documents WHERE id = ?', (doc_id,))
+            result = c.fetchone()
+            return dict(result) if result else None
+        finally:
+            conn.close()
+
+    try:
+        doc = execute_with_retry(do_get)
+        if not doc or not doc['file_path']:
+            return jsonify({'error': 'Document not found'}), 404
+
+        return send_from_directory(os.path.dirname(doc['file_path']),
+                                  os.path.basename(doc['file_path']),
+                                  as_attachment=True,
+                                  download_name=doc['name'])
+    except Exception as e:
+        print(f"Error in download_document: {e}")
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
